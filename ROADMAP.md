@@ -13,14 +13,14 @@ against real backend (no mock data).
 ---
 
 ## Phase 0 — Repo & Scaffolding
-**Status: IN PROGRESS**
+**Status: DONE**
 
 - [x] Audit existing repo (`artifacts/mockup-sandbox` = shadcn/ui component gallery only,
       no real screens; `artifacts/api-server` = Express/Drizzle, not used by mobile app)
 - [x] Scaffold `apps/mobile` as Expo Router app (`package.json`, `app.json`)
 - [x] Finish base config: `babel.config.js`, `tsconfig.json`, `tailwind.config.js` (NativeWind),
       `metro.config.js`, `.env.example`
-- [ ] Root `_layout.tsx` with providers (QueryClient, Auth, Toast, ErrorBoundary) — next up
+- [x] Root `_layout.tsx` with providers (QueryClient, Auth, Toast, ErrorBoundary)
 
 Owner notes: mockup-sandbox's shadcn components are web/Radix-based and do not run in React
 Native. Reuse only the *design language* (spacing, color tokens, typography) via NativeWind,
@@ -38,9 +38,13 @@ not the component code itself.
 - [x] Row Level Security policies for every table (tenants see published listings only;
       landlords/caretakers manage only their own properties; users manage only their own rows)
 - [x] DB triggers: auto-create `profiles` row on signup, `updated_at` timestamps, favorite count
-- [ ] Supabase Storage buckets + policies (if storing anything outside Cloudinary, e.g. avatars)
-- [ ] Seed script with realistic (not fake-looking) sample listings for dev/testing
-- [ ] Run this migration against a real Supabase project and verify (needs project credentials)
+- [x] Supabase Storage buckets + policies (`supabase/storage.sql`: `avatars` public bucket,
+      `chat-attachments` private bucket, RLS scoped to owner/conversation participants)
+- [x] Seed script with realistic sample listings for dev/testing (`scripts/seed.ts`, run via
+      `pnpm seed` — creates real Supabase Auth users + 7 Kenyan listings across price/type/location)
+- [ ] Run this migration against a real Supabase project and verify (needs project credentials —
+      Chris needs to supply `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` in `.env.seed`, then run
+      `schema.sql` → `storage.sql` → `pnpm seed` in that order)
 
 Blocks: everything in Phase 3+ needs this schema to query against.
 
@@ -80,8 +84,8 @@ recovery token — flagged for Phase 3 polish).
 - [ ] Property details screen: image gallery, video tour, full amenity list, **caretaker /
       property manager details and contact**, nearby landmarks, embedded map preview,
       favorite/share/report actions
-- [ ] Cloudinary upload helper (`src/lib/cloudinary.ts`) for listing photos/videos (unsigned
-      preset), used by the landlord "add property" flow
+- [x] Cloudinary upload helper (`src/lib/cloudinary.ts`) for listing photos/videos (unsigned
+      preset) — already built, not yet wired to a landlord "add property" flow (Phase 4)
 
 ---
 
