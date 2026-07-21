@@ -554,22 +554,208 @@ create policy "payment_accounts_owner" on public.payment_accounts
   for all using (profile_id = auth.uid()) with check (profile_id = auth.uid());
 
 -- ============================================================================
--- Nearby-properties helper (used by map search / "near me" home sections)
+-- Phase 3 — property search / details / view-count RPCs
+-- Runs SECURITY INVOKER (default) so the existing properties RLS policy
+-- ("available, or own listing, or admin") is enforced automatically — no
+-- separate privilege logic needed here.
 -- ============================================================================
-create or replace function public.nearby_properties(
-  lat double precision,
-  lng double precision,
-  radius_meters integer default 5000
+
+-- search_properties: single flexible RPC backing the Home screen sections,
+-- the Search + Filters screen, the Map screen (pass a bbox-sized radius) and
+-- the Favorites screen (pass property_ids). Returns one row per match, each
+-- a lightweight card-shaped jsonb object — cheap enough to call repeatedly
+-- with different filters rather than maintaining several near-duplicate RPCs.
+create or replace function public.search_properties(
+  viewer_id uuid default null,
+  search_text text default null,
+  min_rent numeric default null,
+  max_rent numeric default null,
+  bedrooms_filter smallint default null,
+  property_types text[] default null,
+  amenity_ids uuid[] default null,
+  county_filter text default null,
+  town_filter text default null,
+  property_ids uuid[] default null,
+  user_lat double precision default null,
+  user_lng double precision default null,
+  radius_meters integer default null,
+  sort_by text default 'newest', -- 'newest' | 'price_asc' | 'price_desc' | 'nearest'
+  page_limit integer default 20,
+  page_offset integer default 0
 )
-returns setof public.properties as $$
-  select p.*
+returns setof jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'id', p.id,
+    'title', p.title,
+    'property_type', p.property_type,
+    'status', p.status,
+    'bedrooms', p.bedrooms,
+    'bathrooms', p.bathrooms,
+    'rent_amount', p.rent_amount,
+    'deposit_amount', p.deposit_amount,
+    'currency', p.currency,
+    'furnished', p.furnished,
+    'cover_image_url', (
+      select pi.secure_url from public.property_images pi
+      where pi.property_id = p.id order by pi.sort_order asc limit 1
+    ),
+    'image_count', (
+      select count(*)::int from public.property_images pi where pi.property_id = p.id
+    ),
+    'county', l.county,
+    'town', l.town,
+    'estate', l.estate,
+    'latitude', ST_Y(p.geo_location::geometry),
+    'longitude', ST_X(p.geo_location::geometry),
+    'distance_meters', case
+      when user_lat is not null and user_lng is not null and p.geo_location is not null
+      then ST_Distance(p.geo_location, ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326)::geography)
+      else null
+    end,
+    'favorite_count', p.favorite_count,
+    'is_favorited', viewer_id is not null and exists(
+      select 1 from public.favorites f where f.property_id = p.id and f.profile_id = viewer_id
+    ),
+    'created_at', p.created_at
+  )
   from public.properties p
+  left join public.locations l on l.id = p.location_id
   where p.status = 'available'
-    and p.geo_location is not null
-    and ST_DWithin(
-      p.geo_location,
-      ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography,
-      radius_meters
+    and (search_text is null or (p.title ilike '%' || search_text || '%' or p.description ilike '%' || search_text || '%'))
+    and (min_rent is null or p.rent_amount >= min_rent)
+    and (max_rent is null or p.rent_amount <= max_rent)
+    and (bedrooms_filter is null or p.bedrooms = bedrooms_filter)
+    and (property_types is null or p.property_type::text = any(property_types))
+    and (county_filter is null or l.county = county_filter)
+    and (town_filter is null or l.town = town_filter)
+    and (property_ids is null or p.id = any(property_ids))
+    and (
+      amenity_ids is null or not exists (
+        select 1 from unnest(amenity_ids) as required(aid)
+        where not exists (
+          select 1 from public.property_amenities pa
+          where pa.property_id = p.id and pa.amenity_id = required.aid
+        )
+      )
     )
-  order by ST_Distance(p.geo_location, ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography) asc;
-$$ language sql stable;
+    and (
+      user_lat is null or user_lng is null or radius_meters is null or p.geo_location is null
+      or ST_DWithin(p.geo_location, ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326)::geography, radius_meters)
+    )
+  order by
+    case when sort_by = 'price_asc' then p.rent_amount end asc nulls last,
+    case when sort_by = 'price_desc' then p.rent_amount end desc nulls last,
+    case when sort_by = 'nearest' and user_lat is not null and user_lng is not null
+      then ST_Distance(p.geo_location, ST_SetSRID(ST_MakePoint(user_lng, user_lat), 4326)::geography)
+    end asc nulls last,
+    p.created_at desc
+  limit page_limit offset page_offset;
+$$;
+
+-- property_details: single round trip for the Property Details screen —
+-- full property fields, images/videos/amenities, location, landlord and
+-- caretaker contact info, and whether the viewer has favorited it.
+create or replace function public.property_details(
+  target_property_id uuid,
+  viewer_id uuid default null
+)
+returns jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'id', p.id,
+    'landlord_id', p.landlord_id,
+    'caretaker_id', p.caretaker_id,
+    'title', p.title,
+    'description', p.description,
+    'property_type', p.property_type,
+    'status', p.status,
+    'bedrooms', p.bedrooms,
+    'bathrooms', p.bathrooms,
+    'size_sqm', p.size_sqm,
+    'rent_amount', p.rent_amount,
+    'deposit_amount', p.deposit_amount,
+    'service_charge', p.service_charge,
+    'currency', p.currency,
+    'water_available', p.water_available,
+    'electricity_available', p.electricity_available,
+    'parking_available', p.parking_available,
+    'internet_available', p.internet_available,
+    'furnished', p.furnished,
+    'pets_allowed', p.pets_allowed,
+    'balcony', p.balcony,
+    'security_features', p.security_features,
+    'house_rules', p.house_rules,
+    'nearby_landmarks', p.nearby_landmarks,
+    'address_text', p.address_text,
+    'latitude', ST_Y(p.geo_location::geometry),
+    'longitude', ST_X(p.geo_location::geometry),
+    'view_count', p.view_count,
+    'favorite_count', p.favorite_count,
+    'created_at', p.created_at,
+    'updated_at', p.updated_at,
+    'location', case when l.id is null then null else jsonb_build_object(
+      'id', l.id, 'county', l.county, 'town', l.town, 'estate', l.estate
+    ) end,
+    'images', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', pi.id, 'secure_url', pi.secure_url,
+        'width', pi.width, 'height', pi.height, 'sort_order', pi.sort_order
+      ) order by pi.sort_order asc)
+      from public.property_images pi where pi.property_id = p.id
+    ), '[]'::jsonb),
+    'videos', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', pv.id, 'secure_url', pv.secure_url,
+        'duration_seconds', pv.duration_seconds, 'sort_order', pv.sort_order
+      ) order by pv.sort_order asc)
+      from public.property_videos pv where pv.property_id = p.id
+    ), '[]'::jsonb),
+    'amenities', coalesce((
+      select jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'icon', a.icon))
+      from public.property_amenities pa
+      join public.amenities a on a.id = pa.amenity_id
+      where pa.property_id = p.id
+    ), '[]'::jsonb),
+    'landlord', jsonb_build_object(
+      'id', lp.id, 'full_name', lp.full_name, 'avatar_url', lp.avatar_url,
+      'contact_phone', ld.contact_phone, 'contact_email', ld.contact_email,
+      'business_name', ld.business_name, 'id_verified', ld.id_verified
+    ),
+    'caretaker', case when cp.id is null then null else jsonb_build_object(
+      'id', cp.id, 'full_name', cp.full_name, 'avatar_url', cp.avatar_url,
+      'contact_phone', cm.contact_phone, 'contact_email', cm.contact_email, 'bio', cm.bio
+    ) end,
+    'is_favorited', viewer_id is not null and exists(
+      select 1 from public.favorites f where f.property_id = p.id and f.profile_id = viewer_id
+    )
+  )
+  from public.properties p
+  left join public.locations l on l.id = p.location_id
+  join public.profiles lp on lp.id = p.landlord_id
+  join public.landlords ld on ld.profile_id = p.landlord_id
+  left join public.profiles cp on cp.id = p.caretaker_id
+  left join public.property_managers cm on cm.profile_id = p.caretaker_id
+  where p.id = target_property_id;
+$$;
+
+-- increment_property_view: narrowly-scoped SECURITY DEFINER so any signed-in
+-- viewer (not just the owner) can bump view_count, without granting broader
+-- write access to the properties table. Touches nothing but this one column.
+create or replace function public.increment_property_view(target_property_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.properties
+  set view_count = view_count + 1
+  where id = target_property_id and status = 'available';
+$$;
+
+revoke all on function public.increment_property_view(uuid) from public;
+grant execute on function public.increment_property_view(uuid) to authenticated, anon;

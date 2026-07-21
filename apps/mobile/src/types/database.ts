@@ -214,6 +214,106 @@ export interface Review {
   created_at: string;
 }
 
+/** Lightweight card shape returned by the `search_properties` RPC. */
+export interface PropertyCard {
+  id: string;
+  title: string;
+  property_type: PropertyType;
+  status: PropertyStatus;
+  bedrooms: number;
+  bathrooms: number;
+  rent_amount: number;
+  deposit_amount: number;
+  currency: string;
+  furnished: boolean;
+  cover_image_url: string | null;
+  image_count: number;
+  county: string | null;
+  town: string | null;
+  estate: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  distance_meters: number | null;
+  favorite_count: number;
+  is_favorited: boolean;
+  created_at: string;
+}
+
+export type SortBy = "newest" | "price_asc" | "price_desc" | "nearest";
+
+/** Params accepted by the `search_properties` RPC — mirror its SQL signature. */
+export interface SearchFilters {
+  viewer_id?: string | null;
+  search_text?: string | null;
+  min_rent?: number | null;
+  max_rent?: number | null;
+  bedrooms_filter?: number | null;
+  property_types?: PropertyType[] | null;
+  amenity_ids?: string[] | null;
+  county_filter?: string | null;
+  town_filter?: string | null;
+  property_ids?: string[] | null;
+  user_lat?: number | null;
+  user_lng?: number | null;
+  radius_meters?: number | null;
+  sort_by?: SortBy;
+  page_limit?: number;
+  page_offset?: number;
+}
+
+/** Full joined shape returned by the `property_details` RPC. */
+export interface PropertyDetailsResponse {
+  id: string;
+  landlord_id: string;
+  caretaker_id: string | null;
+  title: string;
+  description: string;
+  property_type: PropertyType;
+  status: PropertyStatus;
+  bedrooms: number;
+  bathrooms: number;
+  size_sqm: number | null;
+  rent_amount: number;
+  deposit_amount: number;
+  service_charge: number;
+  currency: string;
+  water_available: boolean;
+  electricity_available: boolean;
+  parking_available: boolean;
+  internet_available: boolean;
+  furnished: boolean;
+  pets_allowed: boolean;
+  balcony: boolean;
+  security_features: string | null;
+  house_rules: string | null;
+  nearby_landmarks: string | null;
+  address_text: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  view_count: number;
+  favorite_count: number;
+  created_at: string;
+  updated_at: string;
+  location: LocationRow | null;
+  images: PropertyImage[];
+  videos: PropertyVideo[];
+  amenities: Amenity[];
+  landlord: Pick<Profile, "id" | "full_name" | "avatar_url"> & {
+    contact_phone: string | null;
+    contact_email: string | null;
+    business_name: string | null;
+    id_verified: boolean;
+  };
+  caretaker:
+    | (Pick<Profile, "id" | "full_name" | "avatar_url"> & {
+        contact_phone: string | null;
+        contact_email: string | null;
+        bio: string | null;
+      })
+    | null;
+  is_favorited: boolean;
+}
+
 /**
  * Minimal Supabase generated-types shape. Once the schema is finalized, replace this
  * with the real output of `supabase gen types typescript` for full query-builder safety.
@@ -260,6 +360,17 @@ export interface Database {
       };
       reports: { Row: Report; Insert: Partial<Report>; Update: Partial<Report> };
       reviews: { Row: Review; Insert: Partial<Review>; Update: Partial<Review> };
+    };
+    Functions: {
+      search_properties: { Args: SearchFilters; Returns: PropertyCard[] };
+      property_details: {
+        Args: { target_property_id: string; viewer_id?: string | null };
+        Returns: PropertyDetailsResponse;
+      };
+      increment_property_view: {
+        Args: { target_property_id: string };
+        Returns: void;
+      };
     };
   };
 }
