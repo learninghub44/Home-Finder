@@ -1,0 +1,715 @@
+# MASTER PROMPT — Build a Production-Ready House Rental Mobile App (Expo + React Native + Supabase)
+
+## ROLE
+
+You are a team of world-class Product Managers, UX/UI Designers, Mobile Engineers, Backend Engineers, Database Architects, Security Engineers, DevOps Engineers, and QA Engineers.
+
+Your task is to build a **production-ready, scalable, secure, modern, and beautiful mobile application** using **Expo React Native** and **Supabase** that connects tenants with landlords and property managers.
+
+The application must be built for **real production use**, not as a prototype.
+
+**Never use:**
+
+* Mock data
+* Fake APIs
+* Placeholder components
+* Dummy authentication
+* Temporary implementations
+
+Every feature must be fully implemented and connected to real backend services.
+
+---
+
+# PROJECT GOAL
+
+Create a trusted rental platform where users can:
+
+* Search available houses
+* Discover rentals nearby
+* View complete property information
+* View high-quality photos and videos
+* See accurate property locations
+* Contact landlords or property managers
+* Book property viewings
+* Save favorite houses
+* Receive notifications
+* Report fraudulent listings
+* Rent houses faster and with more confidence
+
+The application should feel as polished as Airbnb while being tailored to the rental market.
+
+---
+
+# TECHNOLOGY STACK
+
+## Mobile
+
+* Expo SDK (Latest Stable)
+* React Native
+* TypeScript
+* Expo Router
+* NativeWind (Tailwind CSS)
+* TanStack Query
+* Zustand
+* React Hook Form
+* Zod
+* React Native Reanimated
+* React Native Gesture Handler
+* Expo Image
+* Expo Secure Store
+* Expo Notifications
+* Expo Location
+* Expo Linking
+* Expo File System
+* Expo Camera (optional)
+* React Native Maps
+* Expo Splash Screen
+
+---
+
+## Backend
+
+Use **Supabase** as the backend.
+
+Implement:
+
+* PostgreSQL
+* Authentication
+* Row Level Security
+* Realtime
+* Storage
+* Edge Functions
+* Database Triggers
+
+---
+
+## External Services
+
+### Cloudinary
+
+Store
+
+* Property images
+* Property videos
+
+Use drag-and-drop style uploads where applicable.
+
+---
+
+### Google Maps
+
+Use for
+
+* Maps
+* Directions
+* Reverse Geocoding
+* Nearby search
+* Route navigation
+
+---
+
+### Expo Push Notifications
+
+Send
+
+* Viewing confirmations
+* Chat messages
+* Saved search alerts
+* Listing updates
+* System notifications
+
+---
+
+### Future Integration (Do Not Implement)
+
+Prepare architecture only for:
+
+* M-Pesa Daraja
+* Online rent payments
+
+No payment flow should be implemented now.
+
+---
+
+# APPLICATION DESIGN
+
+Design must be premium.
+
+Inspired by:
+
+* Airbnb
+* Booking.com
+* Zillow
+* Property24
+* Rightmove
+
+Characteristics:
+
+* Minimal
+* Elegant
+* Spacious
+* Modern
+* Smooth
+* Fast
+
+Animations
+
+* Shared transitions
+* Reanimated animations
+* Skeleton loaders
+* Shimmer loading
+* Pull-to-refresh
+* Bottom sheets
+* Blur effects
+* Smooth page transitions
+* Haptic feedback
+
+Support:
+
+* Light Mode
+* Dark Mode
+
+Responsive across all supported phone sizes.
+
+---
+
+# AUTHENTICATION
+
+Use Supabase Authentication.
+
+Support:
+
+* Email & Password
+* Password Reset
+* Email Verification
+* Session Persistence
+* Secure Logout
+* Token Refresh
+
+Protect authenticated routes.
+
+---
+
+# USER ROLES
+
+## Tenant
+
+Can
+
+* Register
+* Login
+* Search houses
+* View property details
+* Save favorites
+* Book viewing
+* Chat with landlord/property manager
+* Receive notifications
+* Report listings
+* Edit profile
+
+---
+
+## Landlord
+
+Can
+
+* Register
+* Login
+* Complete profile
+* Add profile picture
+* Add contact details
+* Add properties
+* Upload photos
+* Upload videos
+* Edit properties
+* Delete properties
+* View inquiries
+* Manage viewing bookings
+* View listing analytics
+
+---
+
+## Property Manager / Caretaker
+
+Can
+
+* Manage assigned properties
+* Confirm viewing appointments
+* Update availability
+* Chat with tenants
+* Mark properties as rented
+
+---
+
+## Admin
+
+Can
+
+* Manage users
+* Manage properties
+* Remove fraudulent listings
+* Suspend accounts
+* Moderate reports
+* View analytics
+* Manage categories
+* Manage supported locations
+
+---
+
+# HOME SCREEN
+
+Include
+
+* Greeting
+* Search bar
+* Current location
+* Nearby houses
+* Featured listings
+* Recently added
+* Popular rentals
+* Apartments
+* Bedsitters
+* One-bedroom
+* Two-bedroom
+* Three-bedroom
+* Luxury homes
+* Affordable homes
+* Recommended for you
+* Recently viewed
+* Trending locations
+* Promotional banners
+
+---
+
+# PROPERTY DETAILS
+
+Every property must display
+
+* High-resolution image gallery
+* Full-screen gallery
+* Video tour
+* Property title
+* Monthly rent
+* Deposit
+* Service charge
+* Bedrooms
+* Bathrooms
+* House type
+* Property size
+* Water availability
+* Electricity
+* Parking
+* Internet availability
+* Security features
+* House rules
+* Description
+* Amenities
+* Nearby schools
+* Nearby hospitals
+* Nearby supermarkets
+* Nearby transport
+* Google Map preview
+* Directions
+* Distance from user
+* Favorite button
+* Share listing
+* Report listing
+* Book viewing
+* Contact landlord/property manager
+
+---
+
+# PROPERTY SEARCH
+
+Implement
+
+Real-time search
+
+Search by
+
+* County
+* Town
+* Estate
+* Property name
+
+Filters
+
+* Minimum rent
+* Maximum rent
+* Bedrooms
+* Bathrooms
+* Property type
+* Furnished
+* Pets allowed
+* Parking
+* Balcony
+* Water
+* Internet
+* Security
+* Availability
+
+Sort
+
+* Newest
+* Lowest price
+* Highest price
+* Nearest
+* Most viewed
+
+---
+
+# MAP SEARCH
+
+Include
+
+* User location
+* Nearby properties
+* Property markers
+* Marker clustering
+* Route directions
+* Distance estimation
+* Smooth zooming
+* Property preview cards
+
+---
+
+# FAVORITES
+
+Allow users to
+
+* Save listings
+* Remove listings
+* Organize favorites
+* Sync across devices
+* Cache favorites for offline viewing
+
+---
+
+# PROPERTY VIEWING
+
+Tenant
+
+* Select date
+* Select time
+* Submit request
+
+Landlord/Property Manager
+
+* Accept
+* Decline
+* Reschedule
+
+Tenant receives push notifications when status changes.
+
+Statuses
+
+* Pending
+* Confirmed
+* Completed
+* Cancelled
+
+---
+
+# REAL-TIME CHAT
+
+Features
+
+* One-to-one messaging
+* Read receipts
+* Typing indicators
+* Image sharing
+* Push notifications
+* Message history
+* Block user
+* Report abuse
+
+Powered by Supabase Realtime.
+
+---
+
+# NOTIFICATIONS
+
+Support
+
+* New messages
+* Viewing updates
+* Saved search alerts
+* Property availability changes
+* System announcements
+
+---
+
+# LANDLORD DASHBOARD
+
+Include
+
+* My Properties
+* Add Property
+* Edit Property
+* Delete Property
+* Viewing Requests
+* Messages
+* Analytics
+* Occupancy status
+* Property performance
+
+---
+
+# PROPERTY CREATION
+
+Landlords can add
+
+Basic Information
+
+* Title
+* Description
+* Property Type
+* Bedrooms
+* Bathrooms
+* Rent
+* Deposit
+* Service Charge
+
+Amenities
+
+* Water
+* Electricity
+* Parking
+* Security
+* Internet
+* Balcony
+* Garden
+* Pets Allowed
+
+Media
+
+* Multiple images
+* Multiple videos
+
+Location
+
+* County
+* Town
+* Estate
+* Google Map location
+* Nearby landmarks
+
+Availability
+
+* Available
+* Occupied
+* Reserved
+
+Validation
+
+* Required fields
+* Image validation
+* Video validation
+* Form validation
+* Preview before publishing
+
+---
+
+# DATABASE
+
+Design a normalized PostgreSQL schema using Supabase.
+
+Core tables
+
+* users
+* profiles
+* landlords
+* property_managers
+* properties
+* property_images
+* property_videos
+* amenities
+* property_amenities
+* favorites
+* viewing_requests
+* conversations
+* messages
+* notifications
+* reports
+* reviews
+* locations
+
+Implement
+
+* Foreign keys
+* Cascading rules
+* Proper indexing
+* Database triggers
+* Row Level Security
+* Optimized queries
+
+---
+
+# SECURITY
+
+Implement
+
+* Row Level Security
+* Secure authentication
+* Role-based authorization
+* Input validation
+* SQL injection protection
+* XSS protection
+* Secure file uploads
+* Rate limiting
+* API validation
+* Audit logging
+* Secure storage of secrets
+
+No secrets should ever be exposed to the client.
+
+---
+
+# PERFORMANCE
+
+Implement
+
+* Infinite scrolling
+* Pagination
+* Lazy loading
+* Image optimization
+* Video optimization
+* Query caching
+* Background refresh
+* Optimistic updates
+* Offline support for saved listings
+* Fast startup
+* Memory optimization
+
+---
+
+# ERROR HANDLING
+
+Every API request must include
+
+* Loading state
+* Skeleton loading
+* Retry mechanism
+* Graceful fallback
+* Friendly error messages
+* Timeout handling
+* Offline detection
+* Automatic recovery where appropriate
+
+---
+
+# PROJECT STRUCTURE
+
+```text
+app/
+├── (auth)/
+├── (tabs)/
+├── (tenant)/
+├── landlord/
+├── property-manager/
+├── property/
+├── chat/
+├── notifications/
+├── profile/
+├── settings/
+
+components/
+├── ui/
+├── cards/
+├── forms/
+├── maps/
+├── chat/
+├── media/
+├── animations/
+├── modals/
+
+services/
+├── supabase/
+├── auth/
+├── properties/
+├── chat/
+├── bookings/
+├── notifications/
+├── uploads/
+
+hooks/
+
+store/
+
+types/
+
+utils/
+
+constants/
+
+assets/
+
+lib/
+
+theme/
+```
+
+---
+
+# CODE STANDARDS
+
+* TypeScript everywhere
+* No `any` types unless unavoidable
+* Strong typing
+* Modular architecture
+* Reusable components
+* Feature-based organization
+* Clean naming conventions
+* Consistent formatting
+* ESLint
+* Prettier
+* Comprehensive inline documentation only where it improves maintainability
+
+---
+
+# TESTING
+
+Include support for:
+
+* Unit tests
+* Integration tests
+* End-to-end test setup
+* Form validation tests
+* Authentication tests
+* Navigation tests
+
+---
+
+# ACCESSIBILITY
+
+Support:
+
+* Screen readers
+* High contrast
+* Dynamic font sizes
+* Accessible labels
+* Proper touch targets
+* Keyboard navigation where applicable
+
+---
+
+# DEPLOYMENT
+
+The application must be ready for:
+
+* Android (Google Play)
+* iOS (Apple App Store)
+
+Use Expo EAS Build for production builds.
+
+---
+
+# FINAL REQUIREMENTS
+
+* No mock data or placeholder implementations.
+* No unfinished screens or TODO comments.
+* Every screen must be connected to the backend.
+* Every form must validate input and handle errors gracefully.
+* Every API interaction must include loading, success, and error states.
+* Build reusable UI components and a scalable architecture that can support future features such as payments, landlord verification, lease management, and additional property services without major refactoring.
+* Deliver a polished, production-ready application with a modern user experience, robust security, and high performance.
