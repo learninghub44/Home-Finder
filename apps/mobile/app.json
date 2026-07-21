@@ -1,0 +1,73 @@
+{
+  "expo": {
+    "name": "Home Finder",
+    "slug": "home-finder",
+    "scheme": "homefinder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B1F17"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.homefinder.app",
+      "config": {
+        "googleMapsApiKey": "GOOGLE_MAPS_IOS_API_KEY"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Home Finder uses your location to show nearby rentals and estimate distance to listings.",
+        "NSCameraUsageDescription": "Home Finder needs camera access so landlords can add property photos.",
+        "NSPhotoLibraryUsageDescription": "Home Finder needs photo library access so landlords can upload property photos."
+      }
+    },
+    "android": {
+      "package": "com.homefinder.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B1F17"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "GOOGLE_MAPS_ANDROID_API_KEY"
+        }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-location",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Home Finder needs photo library access so you can upload property photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0B1F17"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
