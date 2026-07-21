@@ -116,6 +116,7 @@ export default function LandlordDashboardScreen() {
           renderItem={({ item }) => (
             <PropertyRow
               property={item}
+              canDelete={profile?.role !== "property_manager"}
               onEdit={() => router.push({ pathname: "/landlord/property-form", params: { id: item.id } })}
               onDelete={() => confirmDelete(item)}
             />
@@ -165,10 +166,12 @@ function StatCard({
 
 function PropertyRow({
   property,
+  canDelete,
   onEdit,
   onDelete,
 }: {
   property: LandlordPropertyRow;
+  canDelete: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -219,9 +222,11 @@ function PropertyRow({
         <Pressable onPress={onEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel="Edit listing">
           <Pencil size={18} color="#2C7A4B" />
         </Pressable>
-        <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete listing">
-          <Trash2 size={18} color="#D9463C" />
-        </Pressable>
+        {canDelete ? (
+          <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete listing">
+            <Trash2 size={18} color="#D9463C" />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

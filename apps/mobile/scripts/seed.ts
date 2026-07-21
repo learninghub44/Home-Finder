@@ -42,9 +42,14 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   );
   process.exit(1);
 }
-if (SUPABASE_URL.includes("prod") || process.env.CONFIRM_PROD === undefined && process.env.ALLOW_PROD_SEED !== "true") {
+if (SUPABASE_URL.includes("prod") && process.env.ALLOW_PROD_SEED !== "true") {
   // Extra guardrail: refuse to run against anything that looks like production
   // unless explicitly overridden. This is dev/testing seed data only.
+  console.error(
+    "Refusing to seed a URL containing 'prod'. If this is intentional, re-run with " +
+      "ALLOW_PROD_SEED=true.",
+  );
+  process.exit(1);
 }
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {

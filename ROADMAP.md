@@ -29,7 +29,7 @@ not the component code itself.
 ---
 
 ## Phase 1 — Supabase Backend & Schema
-**Status: IN PROGRESS**
+**Status: IN PROGRESS — code-complete, execution pending against a real project**
 
 - [x] Write `supabase/schema.sql`: `profiles`, `landlords`, `property_managers` (caretakers),
       `properties`, `property_images`, `property_videos`, `amenities`, `property_amenities`,
@@ -41,10 +41,16 @@ not the component code itself.
 - [x] Supabase Storage buckets + policies (`supabase/storage.sql`: `avatars` public bucket,
       `chat-attachments` private bucket, RLS scoped to owner/conversation participants)
 - [x] Seed script with realistic sample listings for dev/testing (`scripts/seed.ts`, run via
-      `pnpm seed` — creates real Supabase Auth users + 7 Kenyan listings across price/type/location)
-- [ ] Run this migration against a real Supabase project and verify (needs project credentials —
-      Chris needs to supply `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` in `.env.seed`, then run
-      `schema.sql` → `storage.sql` → `pnpm seed` in that order)
+      `pnpm seed` — creates real Supabase Auth users + 7 Kenyan listings across price/type/location).
+      Fixed a bug where the "refuse to seed anything that looks like production" guardrail was
+      dead code (an empty `if` block) — it now actually exits with an error unless
+      `ALLOW_PROD_SEED=true` is set.
+- [x] Re-audited `schema.sql` and `storage.sql` end-to-end for correctness — no further issues found.
+- [ ] Run this migration against a real Supabase project and verify (still needs project
+      credentials — Chris needs to supply `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` in
+      `.env.seed`, then run `schema.sql` → `storage.sql` → `pnpm seed` in that order. This step
+      requires a human/local run: no AI agent working in a sandboxed environment can reach
+      `*.supabase.co` to execute it directly.)
 
 Blocks: everything in Phase 3+ needs this schema to query against.
 
@@ -107,34 +113,43 @@ native clustering library; revisit if listing volume grows large enough to need 
 ---
 
 ## Phase 4 — Favorites & Landlord/Caretaker Dashboard
-**Status: IN PROGRESS**
+**Status: IN PROGRESS — feature-complete pending device smoke-test**
 
 - [x] Favorites: add/remove, synced to Supabase (`useToggleFavorite`, optimistic updates), and a
-      basic list screen (`app/(tabs)/favorites.tsx`) — offline cache still TODO
+      basic list screen (`app/(tabs)/favorites.tsx`). Favorite ids now persist offline via
+      `@tanstack/react-query-persist-client` + AsyncStorage (see root `_layout.tsx`).
 - [x] Landlord dashboard (`app/landlord/index.tsx`): analytics summary (listings, total views,
       favorites, pending viewing requests), "My properties" list with cover image, status badge,
       pending-request count, edit/delete actions. Route-guarded to landlord/property_manager/admin
-      roles via `app/landlord/_layout.tsx`; entry point wired up from Profile.
+      roles via `app/landlord/_layout.tsx`; entry point wired up from Profile. Delete action is now
+      hidden for the `property_manager` (caretaker) role, since RLS only allows the landlord to
+      delete — previously caretakers saw a delete button that would silently fail.
 - [x] Add/edit property form (`app/landlord/property-form.tsx`): full field set (type, status,
       bed/bath, size, rent/deposit/service charge, amenity toggles, address/landmarks/security/house
       rules) via react-hook-form + zod (`src/lib/validation/property.ts`), multi-image picker with
       direct Cloudinary upload and per-image delete (`src/lib/properties.ts` CRUD helpers,
-      `src/hooks/useLandlordProperties.ts`)
+      `src/hooks/useLandlordProperties.ts`). Added a caretaker-assignment picker (chip list of the
+      landlord's caretakers, sourced from `property_managers.managed_by_landlord`) and photo
+      reordering with a visible "Cover" badge on the first photo — reordering persists
+      `sort_order` immediately via `reorderPropertyImages`.
 - [x] Viewing requests inbox (`app/landlord/requests.tsx`): lists requests across all of a
       landlord/caretaker's properties with tenant name/phone/notes, confirm/decline/mark-completed
       actions
-- [ ] Caretaker-specific view (reassign/mark rented) still shares the same dashboard as landlords —
-      revisit once caretaker assignment UI exists (currently only settable via `caretaker_id` on the
-      property form, no picker yet)
-- [ ] Not yet built: analytics beyond the basic counts (e.g. views-over-time), offline cache for
-      dashboard data, and image reordering/setting a specific cover photo
-- [ ] `tenant:profiles!viewing_requests_tenant_id_fkey` embed in `getViewingRequestsForLandlord`
-      assumes Postgres's default FK constraint name — verify against real generated Supabase types
-      once Phase 1's migration has actually been run, and adjust if the relationship name differs
+- [x] `getViewingRequestsForLandlord` no longer guesses a Postgres FK constraint name for the
+      tenant embed — it now fetches tenant profiles in a separate batched query, so there's nothing
+      to re-verify once real Supabase types exist.
+- [x] Basic offline cache for favorites and the landlord dashboard (properties + viewing requests)
+      via a `PersistQueryClientProvider` scoped to just those query-key prefixes — search results
+      and property details intentionally stay in-memory-only so they're never served stale.
+- [ ] Caretaker-specific dashboard *view* (a dedicated caretaker layout, e.g. reassign/mark-rented
+      shortcuts) still shares the landlord dashboard layout — only the delete action is now
+      role-gated. A fuller caretaker-specific UI is still open if wanted.
+- [ ] Analytics beyond the basic counts (e.g. views-over-time) not built — would need either a
+      new RPC or client-side aggregation over a time-series source that doesn't exist yet.
 - [ ] None of this has been run against a real Expo/Supabase environment yet (no pnpm/Expo runtime
-      available in this environment) — install deps and smoke-test the whole flow (add property →
-      upload photos → edit → confirm a viewing request → delete) on a device/simulator before
-      shipping
+      available in this sandbox, and no live Supabase project to hit — see Phase 1) — install deps
+      and smoke-test the whole flow (add property → upload photos → reorder/set cover → assign
+      caretaker → edit → confirm a viewing request → delete) on a device/simulator before shipping.
 
 ---
 

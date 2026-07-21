@@ -5,10 +5,12 @@ import {
   createProperty,
   deleteProperty,
   deletePropertyImage,
+  getMyCaretakers,
   getMyProperties,
   getPropertyForEdit,
   getPropertyImages,
   getViewingRequestsForLandlord,
+  reorderPropertyImages,
   updateProperty,
   updateViewingRequestStatus,
   type PropertyFormInput,
@@ -21,7 +23,18 @@ const landlordKey = {
   propertyEdit: (propertyId: string) => ["landlord", "property", propertyId] as const,
   propertyImages: (propertyId: string) => ["landlord", "property-images", propertyId] as const,
   viewingRequests: (profileId: string) => ["landlord", "viewing-requests", profileId] as const,
+  caretakers: (profileId: string) => ["landlord", "caretakers", profileId] as const,
 };
+
+/** Caretakers this landlord has on file, for the "assign caretaker" picker. */
+export function useMyCaretakers() {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: landlordKey.caretakers(profile?.id ?? ""),
+    queryFn: () => getMyCaretakers(profile?.id as string),
+    enabled: !!profile?.id,
+  });
+}
 
 export function useMyProperties() {
   const { profile } = useAuth();
@@ -136,6 +149,26 @@ export function useDeletePropertyImage() {
       Toast.show({
         type: "error",
         text1: "Couldn't remove photo",
+        text2: err instanceof Error ? err.message : undefined,
+      });
+    },
+  });
+}
+
+/** Persists a new photo order — index 0 becomes the cover photo. */
+export function useReorderPropertyImages() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ propertyId, orderedImageIds }: { propertyId: string; orderedImageIds: string[] }) =>
+      reorderPropertyImages(propertyId, orderedImageIds),
+    onSuccess: (_data, { propertyId }) => {
+      queryClient.invalidateQueries({ queryKey: landlordKey.propertyImages(propertyId) });
+      queryClient.invalidateQueries({ queryKey: ["landlord", "properties"] });
+    },
+    onError: (err) => {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't reorder photos",
         text2: err instanceof Error ? err.message : undefined,
       });
     },

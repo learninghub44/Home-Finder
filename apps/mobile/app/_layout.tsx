@@ -2,7 +2,10 @@ import "@/theme/global.css";
 import { useEffect, useState, useCallback } from "react";
 import { Slot } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Toast from "react-native-toast-message";
 import {
   useFonts,
@@ -26,9 +29,20 @@ const queryClient = new QueryClient({
       retry: 2,
       staleTime: 60_000,
       refetchOnWindowFocus: false,
+      gcTime: 1000 * 60 * 60 * 24 * 3, // keep persisted cache around for 3 days
     },
   },
 });
+
+const asyncStoragePersister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: "home-finder-query-cache",
+});
+
+// Only persist data that's genuinely useful to see while offline — favorites and the
+// landlord/caretaker dashboard (properties + viewing requests). Search results, property
+// details, and anything auth-related stay in-memory only (correctly fresh, never stale-served).
+const PERSISTED_QUERY_KEY_PREFIXES = ["favorites", "landlord"];
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -58,7 +72,22 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: asyncStoragePersister,
+          maxAge: 1000 * 60 * 60 * 24 * 3,
+          dehydrateOptions: {
+            shouldDehydrateQuery: (query) => {
+              const firstKeySegment = String(query.queryKey[0] ?? "");
+              return (
+                query.state.status === "success" &&
+                PERSISTED_QUERY_KEY_PREFIXES.includes(firstKeySegment)
+              );
+            },
+          },
+        }}
+      >
         <AuthProvider>
           <View className="flex-1 bg-white dark:bg-surface-dark" onLayout={onLayoutRootView}>
             <OfflineBanner />
@@ -66,7 +95,7 @@ export default function RootLayout() {
           </View>
           <Toast />
         </AuthProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }

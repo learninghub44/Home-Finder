@@ -11,7 +11,7 @@ import {
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, Plus, X } from "lucide-react-native";
+import { ArrowLeft, ChevronLeft, ChevronRight, Plus, Star, X } from "lucide-react-native";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Toast from "react-native-toast-message";
@@ -23,8 +23,10 @@ import { uploadToCloudinary, type CloudinaryUploadResult } from "@/lib/cloudinar
 import {
   useCreateProperty,
   useDeletePropertyImage,
+  useMyCaretakers,
   usePropertyForEdit,
   usePropertyImagesForEdit,
+  useReorderPropertyImages,
   useUpdateProperty,
 } from "@/hooks/useLandlordProperties";
 import {
@@ -55,6 +57,8 @@ export default function PropertyFormScreen() {
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
   const deleteImage = useDeletePropertyImage();
+  const reorderImages = useReorderPropertyImages();
+  const { data: caretakers } = useMyCaretakers();
 
   const [newUploads, setNewUploads] = useState<CloudinaryUploadResult[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -134,6 +138,19 @@ export default function PropertyFormScreen() {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  /** Moves an existing (already-saved) photo left/right and persists the new order immediately. */
+  const moveExistingImage = (imageId: string, direction: -1 | 1) => {
+    if (!existingImages || !id) return;
+    const ordered = [...existingImages].sort((a, b) => a.sort_order - b.sort_order);
+    const index = ordered.findIndex((img) => img.id === imageId);
+    const targetIndex = index + direction;
+    if (index === -1 || targetIndex < 0 || targetIndex >= ordered.length) return;
+
+    const reordered = [...ordered];
+    [reordered[index], reordered[targetIndex]] = [reordered[targetIndex], reordered[index]];
+    reorderImages.mutate({ propertyId: id, orderedImageIds: reordered.map((img) => img.id) });
   };
 
   const onSubmit = async (values: PropertyFormValues) => {
@@ -375,6 +392,33 @@ export default function PropertyFormScreen() {
           ))}
         </View>
 
+        <Text className="mb-2 mt-1 text-sm font-medium text-brand-900 dark:text-white">
+          Caretaker (optional)
+        </Text>
+        <Controller
+          control={control}
+          name="caretaker_id"
+          render={({ field: { onChange, value } }) => (
+            <View className="mb-4 flex-row flex-wrap">
+              <Chip label="None" selected={!value} onPress={() => onChange(null)} />
+              {(caretakers ?? []).map((c) => (
+                <Chip
+                  key={c.profileId}
+                  label={c.fullName ?? c.phone ?? "Caretaker"}
+                  selected={value === c.profileId}
+                  onPress={() => onChange(c.profileId)}
+                />
+              ))}
+            </View>
+          )}
+        />
+        {caretakers && caretakers.length === 0 ? (
+          <Text className="mb-4 text-xs text-gray-500">
+            No caretakers on file yet. A caretaker gets access once they sign up with the
+            "property manager" role and you add them here.
+          </Text>
+        ) : null}
+
         <Controller
           control={control}
           name="address_text"
@@ -434,19 +478,49 @@ export default function PropertyFormScreen() {
         {/* Photos */}
         <Text className="mb-2 mt-1 text-sm font-medium text-brand-900 dark:text-white">Photos</Text>
         <View className="mb-2 flex-row flex-wrap gap-2">
-          {(existingImages ?? []).map((img) => (
-            <View key={img.id} className="relative">
-              <Image source={{ uri: img.secure_url }} style={{ width: 84, height: 84, borderRadius: 10 }} />
-              <Pressable
-                onPress={() => deleteImage.mutate({ imageId: img.id, propertyId: id as string })}
-                className="absolute -right-1.5 -top-1.5 h-6 w-6 items-center justify-center rounded-full bg-black/70"
-                accessibilityRole="button"
-                accessibilityLabel="Remove photo"
-              >
-                <X size={13} color="#FFFFFF" />
-              </Pressable>
-            </View>
-          ))}
+          {[...(existingImages ?? [])]
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((img, index) => (
+              <View key={img.id} className="relative">
+                <Image source={{ uri: img.secure_url }} style={{ width: 84, height: 84, borderRadius: 10 }} />
+                {index === 0 ? (
+                  <View className="absolute bottom-1 left-1 flex-row items-center gap-0.5 rounded-full bg-black/70 px-1.5 py-0.5">
+                    <Star size={9} color="#F5C451" fill="#F5C451" />
+                    <Text className="text-[9px] font-medium text-white">Cover</Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  onPress={() => deleteImage.mutate({ imageId: img.id, propertyId: id as string })}
+                  className="absolute -right-1.5 -top-1.5 h-6 w-6 items-center justify-center rounded-full bg-black/70"
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove photo"
+                >
+                  <X size={13} color="#FFFFFF" />
+                </Pressable>
+                <View className="absolute -bottom-1 right-1 flex-row gap-1">
+                  {index > 0 ? (
+                    <Pressable
+                      onPress={() => moveExistingImage(img.id, -1)}
+                      className="h-6 w-6 items-center justify-center rounded-full bg-black/70"
+                      accessibilityRole="button"
+                      accessibilityLabel="Move photo earlier"
+                    >
+                      <ChevronLeft size={13} color="#FFFFFF" />
+                    </Pressable>
+                  ) : null}
+                  {index < (existingImages?.length ?? 0) - 1 ? (
+                    <Pressable
+                      onPress={() => moveExistingImage(img.id, 1)}
+                      className="h-6 w-6 items-center justify-center rounded-full bg-black/70"
+                      accessibilityRole="button"
+                      accessibilityLabel="Move photo later"
+                    >
+                      <ChevronRight size={13} color="#FFFFFF" />
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+            ))}
           {newUploads.map((u) => (
             <Image
               key={u.publicId}
