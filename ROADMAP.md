@@ -18,8 +18,9 @@ against real backend (no mock data).
 - [x] Audit existing repo (`artifacts/mockup-sandbox` = shadcn/ui component gallery only,
       no real screens; `artifacts/api-server` = Express/Drizzle, not used by mobile app)
 - [x] Scaffold `apps/mobile` as Expo Router app (`package.json`, `app.json`)
-- [ ] Finish base config: `babel.config.js`, `tsconfig.json`, `tailwind.config.js` (NativeWind), `.env.example`
-- [ ] Root `_layout.tsx` with providers (QueryClient, Auth, Toast, ErrorBoundary)
+- [x] Finish base config: `babel.config.js`, `tsconfig.json`, `tailwind.config.js` (NativeWind),
+      `metro.config.js`, `.env.example`
+- [ ] Root `_layout.tsx` with providers (QueryClient, Auth, Toast, ErrorBoundary) — next up
 
 Owner notes: mockup-sandbox's shadcn components are web/Radix-based and do not run in React
 Native. Reuse only the *design language* (spacing, color tokens, typography) via NativeWind,
@@ -28,32 +29,39 @@ not the component code itself.
 ---
 
 ## Phase 1 — Supabase Backend & Schema
-**Status: TODO**
+**Status: IN PROGRESS**
 
-- [ ] Write `supabase/schema.sql`: `profiles`, `landlords`, `property_managers` (caretakers),
+- [x] Write `supabase/schema.sql`: `profiles`, `landlords`, `property_managers` (caretakers),
       `properties`, `property_images`, `property_videos`, `amenities`, `property_amenities`,
       `favorites`, `viewing_requests`, `conversations`, `messages`, `notifications`,
-      `reports`, `reviews`, `locations`
-- [ ] Row Level Security policies for every table (tenants see published listings only;
+      `reports`, `reviews`, `locations`, plus PostGIS-backed `nearby_properties()` RPC
+- [x] Row Level Security policies for every table (tenants see published listings only;
       landlords/caretakers manage only their own properties; users manage only their own rows)
-- [ ] DB triggers: auto-create `profiles` row on signup, `updated_at` timestamps, favorite count
+- [x] DB triggers: auto-create `profiles` row on signup, `updated_at` timestamps, favorite count
 - [ ] Supabase Storage buckets + policies (if storing anything outside Cloudinary, e.g. avatars)
 - [ ] Seed script with realistic (not fake-looking) sample listings for dev/testing
+- [ ] Run this migration against a real Supabase project and verify (needs project credentials)
 
 Blocks: everything in Phase 3+ needs this schema to query against.
 
 ---
 
 ## Phase 2 — Auth & Onboarding
-**Status: TODO**
+**Status: IN PROGRESS**
 
-- [ ] Supabase client (`src/lib/supabase.ts`) with SecureStore-backed session persistence
-- [ ] Auth context/hook: sign up, sign in, sign out, password reset, session refresh
+- [x] Supabase client (`src/lib/supabase.ts`) with SecureStore-backed session persistence
+      (chunked storage adapter to work around SecureStore's 2KB value limit)
+- [x] Auth context/hook (`src/hooks/useAuth.tsx`): sign up, sign in, sign out, password reset,
+      session refresh, profile loading
+- [x] Zod validation schemas (`src/lib/validation/auth.ts`) and friendly error mapping
+      (`src/lib/errors.ts`) so raw Supabase/Postgres errors never reach the UI
+- [x] Network status hook (`src/hooks/useNetworkStatus.ts`) for offline detection
 - [ ] Onboarding carousel (first-run only, persisted flag)
-- [ ] Screens: `login`, `signup`, `forgot-password` — full Zod validation, inline field errors,
-      loading states, network-error and server-error handling, email verification flow
+- [ ] Screens: `login`, `signup`, `forgot-password` — wire the above into actual UI with
+      inline field errors, loading states, email verification flow
 - [ ] Route protection (redirect unauthenticated users out of `(tabs)`)
-- [ ] Role selection at signup: tenant / landlord / property manager (caretaker)
+- [ ] Role selection at signup: tenant / landlord / property manager (caretaker) — schema and
+      validation already support this, UI still needed
 
 ---
 
