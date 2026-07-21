@@ -47,7 +47,7 @@ Blocks: everything in Phase 3+ needs this schema to query against.
 ---
 
 ## Phase 2 — Auth & Onboarding
-**Status: IN PROGRESS**
+**Status: DONE**
 
 - [x] Supabase client (`src/lib/supabase.ts`) with SecureStore-backed session persistence
       (chunked storage adapter to work around SecureStore's 2KB value limit)
@@ -56,12 +56,16 @@ Blocks: everything in Phase 3+ needs this schema to query against.
 - [x] Zod validation schemas (`src/lib/validation/auth.ts`) and friendly error mapping
       (`src/lib/errors.ts`) so raw Supabase/Postgres errors never reach the UI
 - [x] Network status hook (`src/hooks/useNetworkStatus.ts`) for offline detection
-- [ ] Onboarding carousel (first-run only, persisted flag)
-- [ ] Screens: `login`, `signup`, `forgot-password` — wire the above into actual UI with
-      inline field errors, loading states, email verification flow
-- [ ] Route protection (redirect unauthenticated users out of `(tabs)`)
-- [ ] Role selection at signup: tenant / landlord / property manager (caretaker) — schema and
-      validation already support this, UI still needed
+- [x] Onboarding carousel (`app/onboarding.tsx`, first-run only, persisted via SecureStore flag)
+- [x] Screens: `login`, `signup`, `forgot-password` (`app/(auth)/*`) — inline field errors,
+      loading states, offline detection, email-verification messaging
+- [x] Route protection: `app/index.tsx` redirects to onboarding/auth/tabs based on real state;
+      `(auth)/_layout.tsx` and `(tabs)/_layout.tsx` both guard against the wrong session state
+- [x] Role selection at signup: tenant / landlord / property manager (caretaker)
+
+Not yet built: actual email-template customization in Supabase dashboard, and deep-link
+handling for the `homefinder://reset-password` redirect (needs a screen to consume the
+recovery token — flagged for Phase 3 polish).
 
 ---
 
