@@ -74,25 +74,43 @@ recovery token — flagged for Phase 3 polish).
 ---
 
 ## Phase 3 — Core Listings, Map & Property Details
-**Status: TODO**
+**Status: DONE**
 
-- [ ] Home screen: featured/nearby/recent/by-type sections, pull-to-refresh, skeleton loaders,
-      empty and error states
-- [ ] Search + filters (price, bedrooms, type, amenities) + sort
-- [ ] Map screen: `react-native-maps`, live user location, property markers/clustering,
-      distance estimate
-- [ ] Property details screen: image gallery, video tour, full amenity list, **caretaker /
-      property manager details and contact**, nearby landmarks, embedded map preview,
-      favorite/share/report actions
+- [x] Home screen: featured/nearby/recent/by-type sections, pull-to-refresh, skeleton loaders,
+      empty and error states (`app/(tabs)/index.tsx` — was already built ahead of this phase)
+- [x] Search + filters (price, bedrooms, type, amenities, county/town) + sort (`app/search.tsx`,
+      `src/components/FilterSheet.tsx`) — debounced text search, infinite scroll via
+      `useInfiniteSearchProperties`, active-filter badge count, reset/apply flow
+- [x] Map screen: `react-native-maps`, live user location (blue dot + recenter button), price-pill
+      markers, lightweight grid-based clustering with tap-to-zoom, tap-to-preview
+      (`app/(tabs)/map.tsx`) — distance estimate comes from `search_properties`'s
+      `distance_meters` when sorted "nearest"
+- [x] Property details screen (`app/property/[id].tsx`): paged image gallery with full-screen
+      viewer, video tour playback (`expo-av`), full amenity grid with resolved icons
+      (`src/lib/icons.ts`), landlord **and caretaker/property manager** contact cards (call/email),
+      nearby landmarks, house rules, security features, embedded static map + "Get directions",
+      favorite/share/report actions (`src/components/ReportModal.tsx`, `src/lib/reports.ts`,
+      `src/hooks/useReportProperty.ts`), view-count recorded on open
 - [x] Cloudinary upload helper (`src/lib/cloudinary.ts`) for listing photos/videos (unsigned
       preset) — already built, not yet wired to a landlord "add property" flow (Phase 4)
+
+Also added minimal-but-functional `app/(tabs)/favorites.tsx` and `app/(tabs)/profile.tsx` so the
+tab navigator (which already referenced these routes) doesn't crash — full favorites
+add/remove UX and the landlord/caretaker dashboard are still Phase 4 work; the Profile screen
+currently just shows account info + sign out and links out to Favorites.
+
+Not yet done: `expo-av` was added to `package.json` but `pnpm install` hasn't been run in this
+environment (no Expo/pnpm runtime available here) — install and smoke-test on a device/simulator
+before shipping. Full clustering was implemented as a simple grid-bucket algorithm rather than a
+native clustering library; revisit if listing volume grows large enough to need it.
 
 ---
 
 ## Phase 4 — Favorites & Landlord/Caretaker Dashboard
-**Status: TODO**
+**Status: IN PROGRESS**
 
-- [ ] Favorites: add/remove, synced to Supabase, offline cache
+- [x] Favorites: add/remove, synced to Supabase (`useToggleFavorite`, optimistic updates), and a
+      basic list screen (`app/(tabs)/favorites.tsx`) — offline cache still TODO
 - [ ] Landlord dashboard: my properties, add/edit/delete property (full form + validation +
       media upload), viewing requests inbox, basic analytics
 - [ ] Caretaker view: assigned properties, confirm/reschedule viewings, mark rented
