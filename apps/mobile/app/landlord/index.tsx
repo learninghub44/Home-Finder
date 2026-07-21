@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import {
   ArrowLeft,
   CalendarClock,
+  CheckCircle2,
   Eye,
   Heart,
   Home as HomeIcon,
@@ -16,13 +17,17 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   useDeleteProperty,
   useMyProperties,
+  useUpdatePropertyStatus,
   useViewingRequestsInbox,
+  useViewsOverTime,
 } from "@/hooks/useLandlordProperties";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { ViewsOverTimeChart } from "@/components/ViewsOverTimeChart";
 import { formatPropertyType, formatRentPerMonth } from "@/lib/format";
 import type { LandlordPropertyRow } from "@/lib/properties";
 import { summarizeLandlordAnalytics } from "@/lib/properties";
+import type { PropertyStatus } from "@/types/database";
 
 const STATUS_STYLES: Record<string, string> = {
   available: "bg-brand-50 text-brand-700 dark:bg-brand-800 dark:text-brand-200",
@@ -33,9 +38,12 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function LandlordDashboardScreen() {
   const { profile } = useAuth();
+  const isCaretaker = profile?.role === "property_manager";
   const { data: properties, isLoading, isError, refetch, isRefetching } = useMyProperties();
   const { data: requests } = useViewingRequestsInbox();
+  const { data: viewsOverTime } = useViewsOverTime(30);
   const deleteProperty = useDeleteProperty();
+  const updateStatus = useUpdatePropertyStatus();
 
   const analytics = useMemo(
     () => summarizeLandlordAnalytics(properties ?? []),
@@ -68,16 +76,18 @@ export default function LandlordDashboardScreen() {
           <ArrowLeft size={22} color="#0B1F17" />
         </Pressable>
         <Text className="flex-1 text-lg font-bold text-brand-900 dark:text-white">
-          {profile?.role === "property_manager" ? "Caretaker dashboard" : "Landlord dashboard"}
+          {isCaretaker ? "Caretaker dashboard" : "Landlord dashboard"}
         </Text>
-        <Pressable
-          onPress={() => router.push("/landlord/property-form")}
-          accessibilityRole="button"
-          accessibilityLabel="Add property"
-          className="h-9 w-9 items-center justify-center rounded-full bg-brand-500"
-        >
-          <Plus size={18} color="#FFFFFF" />
-        </Pressable>
+        {isCaretaker ? null : (
+          <Pressable
+            onPress={() => router.push("/landlord/property-form")}
+            accessibilityRole="button"
+            accessibilityLabel="Add property"
+            className="h-9 w-9 items-center justify-center rounded-full bg-brand-500"
+          >
+            <Plus size={18} color="#FFFFFF" />
+          </Pressable>
+        )}
       </View>
 
       {isLoading ? (
@@ -108,6 +118,11 @@ export default function LandlordDashboardScreen() {
                   />
                 </Pressable>
               </View>
+              {viewsOverTime && viewsOverTime.length > 0 ? (
+                <View className="mb-4">
+                  <ViewsOverTimeChart data={viewsOverTime} />
+                </View>
+              ) : null}
               <Text className="mb-2 text-sm font-semibold text-brand-900 dark:text-white">
                 My properties
               </Text>
@@ -116,18 +131,23 @@ export default function LandlordDashboardScreen() {
           renderItem={({ item }) => (
             <PropertyRow
               property={item}
-              canDelete={profile?.role !== "property_manager"}
+              canDelete={!isCaretaker}
               onEdit={() => router.push({ pathname: "/landlord/property-form", params: { id: item.id } })}
               onDelete={() => confirmDelete(item)}
+              onQuickStatus={(status) => updateStatus.mutate({ propertyId: item.id, status })}
             />
           )}
           ListEmptyComponent={
             <EmptyState
               icon={HomeIcon}
               title="No listings yet"
-              message="Add your first property to start receiving viewing requests."
-              actionLabel="Add a property"
-              onAction={() => router.push("/landlord/property-form")}
+              message={
+                isCaretaker
+                  ? "You'll see properties here once a landlord assigns you as caretaker."
+                  : "Add your first property to start receiving viewing requests."
+              }
+              actionLabel={isCaretaker ? undefined : "Add a property"}
+              onAction={isCaretaker ? undefined : () => router.push("/landlord/property-form")}
             />
           }
         />
@@ -169,12 +189,16 @@ function PropertyRow({
   canDelete,
   onEdit,
   onDelete,
+  onQuickStatus,
 }: {
   property: LandlordPropertyRow;
   canDelete: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onQuickStatus: (status: PropertyStatus) => void;
 }) {
+  const nextStatus: PropertyStatus = property.status === "occupied" ? "available" : "occupied";
+  const quickStatusLabel = property.status === "occupied" ? "Mark available" : "Mark occupied";
   return (
     <View className="mx-4 mb-3 flex-row rounded-xl border border-gray-100 bg-white p-2.5 dark:border-gray-800 dark:bg-muted-dark">
       {property.cover_image_url ? (
@@ -216,6 +240,20 @@ function PropertyRow({
             </Text>
           ) : null}
         </View>
+
+        {property.status === "available" || property.status === "occupied" ? (
+          <Pressable
+            onPress={() => onQuickStatus(nextStatus)}
+            className="mt-2 flex-row items-center gap-1 self-start rounded-full bg-muted-light px-2.5 py-1 dark:bg-brand-800"
+            accessibilityRole="button"
+            accessibilityLabel={quickStatusLabel}
+          >
+            <CheckCircle2 size={12} color="#2C7A4B" />
+            <Text className="text-[10px] font-medium text-brand-700 dark:text-brand-200">
+              {quickStatusLabel}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View className="ml-2 justify-between">

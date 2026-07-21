@@ -290,6 +290,19 @@ create table if not exists public.payment_accounts (
   created_at timestamptz not null default now()
 );
 
+-- ----------------------------------------------------------------------------
+-- property_view_events — one row per view, backs the "views over time" chart
+-- on the landlord/caretaker dashboard. Intentionally minimal (no viewer_id —
+-- views are anonymous by design, same as view_count on properties).
+-- ----------------------------------------------------------------------------
+create table if not exists public.property_view_events (
+  id bigint generated always as identity primary key,
+  property_id uuid not null references public.properties(id) on delete cascade,
+  viewed_at timestamptz not null default now()
+);
+create index if not exists idx_property_view_events_property_time
+  on public.property_view_events(property_id, viewed_at);
+
 -- ============================================================================
 -- Triggers
 -- ============================================================================
@@ -375,6 +388,7 @@ alter table public.push_tokens enable row level security;
 alter table public.reports enable row level security;
 alter table public.reviews enable row level security;
 alter table public.payment_accounts enable row level security;
+alter table public.property_view_events enable row level security;
 
 -- Helper: is the current user an admin?
 create or replace function public.is_admin()
@@ -552,6 +566,16 @@ create policy "reviews_owner_write" on public.reviews
 -- payment_accounts: strictly own-row only (unused until Phase 8)
 create policy "payment_accounts_owner" on public.payment_accounts
   for all using (profile_id = auth.uid()) with check (profile_id = auth.uid());
+
+-- property_view_events: read-only for the property's landlord/caretaker/admin; no client-side
+-- insert policy at all — rows are only ever written by increment_property_view (SECURITY DEFINER).
+create policy "property_view_events_select_owner" on public.property_view_events
+  for select using (
+    exists (
+      select 1 from public.properties p
+      where p.id = property_id and (p.landlord_id = auth.uid() or p.caretaker_id = auth.uid() or public.is_admin())
+    )
+  );
 
 -- ============================================================================
 -- Phase 3 — property search / details / view-count RPCs
@@ -745,17 +769,58 @@ $$;
 
 -- increment_property_view: narrowly-scoped SECURITY DEFINER so any signed-in
 -- viewer (not just the owner) can bump view_count, without granting broader
--- write access to the properties table. Touches nothing but this one column.
+-- write access to the properties table. Also logs a row in property_view_events
+-- so the dashboard can chart views over time; still touches nothing else.
 create or replace function public.increment_property_view(target_property_id uuid)
 returns void
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
+begin
   update public.properties
   set view_count = view_count + 1
   where id = target_property_id and status = 'available';
+
+  if found then
+    insert into public.property_view_events (property_id) values (target_property_id);
+  end if;
+end;
 $$;
 
 revoke all on function public.increment_property_view(uuid) from public;
 grant execute on function public.increment_property_view(uuid) to authenticated, anon;
+
+-- landlord_views_over_time: day-bucketed view counts across every property owned or
+-- cared for by profile_id, for the last `days_back` days (inclusive of today).
+-- Runs SECURITY DEFINER (a caretaker/landlord shouldn't need select access to
+-- property_view_events directly for every property — this scopes the aggregation
+-- itself to only that profile's own properties, same trust boundary as before).
+create or replace function public.landlord_views_over_time(
+  profile_id uuid,
+  days_back integer default 30
+)
+returns table (day date, view_count integer)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    d::date as day,
+    count(pve.id)::int as view_count
+  from generate_series(
+    current_date - (greatest(days_back, 1) - 1),
+    current_date,
+    interval '1 day'
+  ) as d
+  left join public.properties p
+    on p.landlord_id = profile_id or p.caretaker_id = profile_id
+  left join public.property_view_events pve
+    on pve.property_id = p.id and pve.viewed_at::date = d::date
+  group by d
+  order by d;
+$$;
+
+revoke all on function public.landlord_views_over_time(uuid, integer) from public;
+grant execute on function public.landlord_views_over_time(uuid, integer) to authenticated;

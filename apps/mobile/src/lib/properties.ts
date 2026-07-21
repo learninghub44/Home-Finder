@@ -338,6 +338,21 @@ export async function updateViewingRequestStatus(
   if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
 }
 
+export interface DailyViewCount {
+  day: string;
+  view_count: number;
+}
+
+/** Day-bucketed view counts across all of a landlord/caretaker's properties, for charting. */
+export async function getViewsOverTime(profileId: string, daysBack = 30): Promise<DailyViewCount[]> {
+  const { data, error } = await supabase.rpc("landlord_views_over_time", {
+    profile_id: profileId,
+    days_back: daysBack,
+  });
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+  return (data ?? []) as DailyViewCount[];
+}
+
 export interface LandlordAnalyticsSummary {
   totalProperties: number;
   availableCount: number;

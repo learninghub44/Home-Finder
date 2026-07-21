@@ -141,11 +141,17 @@ native clustering library; revisit if listing volume grows large enough to need 
 - [x] Basic offline cache for favorites and the landlord dashboard (properties + viewing requests)
       via a `PersistQueryClientProvider` scoped to just those query-key prefixes — search results
       and property details intentionally stay in-memory-only so they're never served stale.
-- [ ] Caretaker-specific dashboard *view* (a dedicated caretaker layout, e.g. reassign/mark-rented
-      shortcuts) still shares the landlord dashboard layout — only the delete action is now
-      role-gated. A fuller caretaker-specific UI is still open if wanted.
-- [ ] Analytics beyond the basic counts (e.g. views-over-time) not built — would need either a
-      new RPC or client-side aggregation over a time-series source that doesn't exist yet.
+- [x] Caretaker-specific dashboard behavior: caretakers no longer see the "Add property" button
+      (RLS only allows the landlord to insert), and both roles get a quick "Mark occupied /
+      Mark available" toggle on each listing that skips the full edit form — the "mark rented"
+      shortcut called out here. Full reassignment is a landlord-side action via the caretaker
+      picker added to the property form.
+- [x] Analytics beyond basic counts: added a real views-over-time data path — a new
+      `property_view_events` log table (written by `increment_property_view`, same
+      SECURITY DEFINER function, no new write surface), a `landlord_views_over_time` RPC that
+      day-buckets counts across a landlord/caretaker's properties, and a dependency-free SVG bar
+      chart (`ViewsOverTimeChart.tsx`, built on the already-installed `react-native-svg`) on the
+      dashboard.
 - [ ] None of this has been run against a real Expo/Supabase environment yet (no pnpm/Expo runtime
       available in this sandbox, and no live Supabase project to hit — see Phase 1) — install deps
       and smoke-test the whole flow (add property → upload photos → reorder/set cover → assign

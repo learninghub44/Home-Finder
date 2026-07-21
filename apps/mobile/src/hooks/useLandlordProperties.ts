@@ -10,6 +10,7 @@ import {
   getPropertyForEdit,
   getPropertyImages,
   getViewingRequestsForLandlord,
+  getViewsOverTime,
   reorderPropertyImages,
   updateProperty,
   updateViewingRequestStatus,
@@ -24,7 +25,19 @@ const landlordKey = {
   propertyImages: (propertyId: string) => ["landlord", "property-images", propertyId] as const,
   viewingRequests: (profileId: string) => ["landlord", "viewing-requests", profileId] as const,
   caretakers: (profileId: string) => ["landlord", "caretakers", profileId] as const,
+  viewsOverTime: (profileId: string, daysBack: number) =>
+    ["landlord", "views-over-time", profileId, daysBack] as const,
 };
+
+/** Day-bucketed views over the last `daysBack` days, for the dashboard chart. */
+export function useViewsOverTime(daysBack = 30) {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: landlordKey.viewsOverTime(profile?.id ?? "", daysBack),
+    queryFn: () => getViewsOverTime(profile?.id as string, daysBack),
+    enabled: !!profile?.id,
+  });
+}
 
 /** Caretakers this landlord has on file, for the "assign caretaker" picker. */
 export function useMyCaretakers() {
@@ -169,6 +182,27 @@ export function useReorderPropertyImages() {
       Toast.show({
         type: "error",
         text1: "Couldn't reorder photos",
+        text2: err instanceof Error ? err.message : undefined,
+      });
+    },
+  });
+}
+
+/** Quick status change (e.g. "mark occupied") without opening the full edit form. */
+export function useUpdatePropertyStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ propertyId, status }: { propertyId: string; status: PropertyFormInput["status"] }) =>
+      updateProperty(propertyId, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["landlord", "properties"] });
+      queryClient.invalidateQueries({ queryKey: ["properties", "details"] });
+      Toast.show({ type: "success", text1: "Status updated" });
+    },
+    onError: (err) => {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't update status",
         text2: err instanceof Error ? err.message : undefined,
       });
     },
