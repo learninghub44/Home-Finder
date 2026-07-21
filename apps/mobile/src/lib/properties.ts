@@ -3,9 +3,13 @@ import { toFriendlyDatabaseError } from "./errors";
 import type {
   Amenity,
   LocationRow,
+  Property,
   PropertyCard,
   PropertyDetailsResponse,
+  PropertyImage,
   SearchFilters,
+  ViewingRequest,
+  ViewingStatus,
 } from "@/types/database";
 
 export class PropertyQueryError extends Error {
@@ -111,3 +115,211 @@ export async function getTownsForCounty(county: string): Promise<string[]> {
 }
 
 export type { LocationRow };
+
+// ---------------------------------------------------------------------------
+// Phase 4: Landlord / caretaker dashboard
+// ---------------------------------------------------------------------------
+
+/** Fields a landlord/caretaker can set when creating or editing a listing. */
+export type PropertyFormInput = Omit<
+  Property,
+  | "id"
+  | "landlord_id"
+  | "view_count"
+  | "favorite_count"
+  | "created_at"
+  | "updated_at"
+>;
+
+export interface LandlordPropertyRow extends Property {
+  cover_image_url: string | null;
+  pending_viewing_requests: number;
+}
+
+/** "My properties" list for the landlord dashboard — includes cover image and pending request count. */
+export async function getMyProperties(profileId: string): Promise<LandlordPropertyRow[]> {
+  const { data, error } = await supabase
+    .from("properties")
+    .select(
+      "*, property_images(secure_url, sort_order), viewing_requests(id, status)",
+    )
+    .or(`landlord_id.eq.${profileId},caretaker_id.eq.${profileId}`)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+
+  return (data ?? []).map((row) => {
+    const images = (row.property_images ?? []) as { secure_url: string; sort_order: number }[];
+    const cover = [...images].sort((a, b) => a.sort_order - b.sort_order)[0];
+    const requests = (row.viewing_requests ?? []) as { id: string; status: ViewingStatus }[];
+    const pending = requests.filter((r) => r.status === "pending").length;
+    const { property_images, viewing_requests, ...propertyFields } = row as typeof row & {
+      property_images?: unknown;
+      viewing_requests?: unknown;
+    };
+
+    return {
+      ...(propertyFields as Property),
+      cover_image_url: cover?.secure_url ?? null,
+      pending_viewing_requests: pending,
+    };
+  });
+}
+
+export async function getPropertyForEdit(propertyId: string): Promise<Property> {
+  const { data, error } = await supabase
+    .from("properties")
+    .select("*")
+    .eq("id", propertyId)
+    .single();
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+  return data as Property;
+}
+
+export async function createProperty(
+  landlordId: string,
+  input: PropertyFormInput,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("properties")
+    .insert({ ...input, landlord_id: landlordId })
+    .select("id")
+    .single();
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+  return data.id as string;
+}
+
+export async function updateProperty(
+  propertyId: string,
+  patch: Partial<PropertyFormInput>,
+): Promise<void> {
+  const { error } = await supabase.from("properties").update(patch).eq("id", propertyId);
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+}
+
+export async function deleteProperty(propertyId: string): Promise<void> {
+  const { error } = await supabase.from("properties").delete().eq("id", propertyId);
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+}
+
+export async function getPropertyImages(propertyId: string): Promise<PropertyImage[]> {
+  const { data, error } = await supabase
+    .from("property_images")
+    .select("*")
+    .eq("property_id", propertyId)
+    .order("sort_order");
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+  return (data ?? []) as PropertyImage[];
+}
+
+export async function addPropertyImages(
+  propertyId: string,
+  images: {
+    cloudinary_public_id: string;
+    secure_url: string;
+    width: number;
+    height: number;
+    sort_order: number;
+  }[],
+): Promise<void> {
+  if (images.length === 0) return;
+  const { error } = await supabase
+    .from("property_images")
+    .insert(images.map((img) => ({ property_id: propertyId, ...img })));
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+}
+
+export async function deletePropertyImage(imageId: string): Promise<void> {
+  const { error } = await supabase.from("property_images").delete().eq("id", imageId);
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+}
+
+export interface LandlordViewingRequest extends ViewingRequest {
+  property_title: string;
+  tenant_name: string | null;
+  tenant_phone: string | null;
+}
+
+/**
+ * Viewing request inbox for a landlord/caretaker, across all of their properties.
+ * NOTE: the `tenant:profiles!viewing_requests_tenant_id_fkey` embed relies on
+ * Postgres's default FK constraint name. Once `supabase gen types typescript`
+ * is run against the real project, double check this against the generated
+ * relationship name and adjust if it differs.
+ */
+export async function getViewingRequestsForLandlord(
+  profileId: string,
+): Promise<LandlordViewingRequest[]> {
+  const { data, error } = await supabase
+    .from("viewing_requests")
+    .select(
+      "*, properties!inner(title, landlord_id, caretaker_id), tenant:profiles!viewing_requests_tenant_id_fkey(full_name, phone)",
+    )
+    .or(`landlord_id.eq.${profileId},caretaker_id.eq.${profileId}`, {
+      foreignTable: "properties",
+    })
+    .order("requested_date", { ascending: true });
+
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+
+  return (data ?? []).map((row) => {
+    const properties = row.properties as unknown as { title: string };
+    const tenant = row.tenant as unknown as { full_name: string | null; phone: string | null } | null;
+    const { properties: _p, tenant: _t, ...rest } = row as typeof row & {
+      properties?: unknown;
+      tenant?: unknown;
+    };
+
+    return {
+      ...(rest as ViewingRequest),
+      property_title: properties?.title ?? "Listing",
+      tenant_name: tenant?.full_name ?? null,
+      tenant_phone: tenant?.phone ?? null,
+    };
+  });
+}
+
+export async function updateViewingRequestStatus(
+  requestId: string,
+  status: ViewingStatus,
+  responderId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("viewing_requests")
+    .update({ status, responder_id: responderId })
+    .eq("id", requestId);
+  if (error) throw new PropertyQueryError(toFriendlyDatabaseError(error));
+}
+
+export interface LandlordAnalyticsSummary {
+  totalProperties: number;
+  availableCount: number;
+  occupiedCount: number;
+  totalViews: number;
+  totalFavorites: number;
+  pendingViewingRequests: number;
+}
+
+/** Basic analytics rollup for the dashboard header — computed client-side from "my properties". */
+export function summarizeLandlordAnalytics(
+  properties: LandlordPropertyRow[],
+): LandlordAnalyticsSummary {
+  return properties.reduce<LandlordAnalyticsSummary>(
+    (acc, p) => ({
+      totalProperties: acc.totalProperties + 1,
+      availableCount: acc.availableCount + (p.status === "available" ? 1 : 0),
+      occupiedCount: acc.occupiedCount + (p.status === "occupied" ? 1 : 0),
+      totalViews: acc.totalViews + p.view_count,
+      totalFavorites: acc.totalFavorites + p.favorite_count,
+      pendingViewingRequests: acc.pendingViewingRequests + p.pending_viewing_requests,
+    }),
+    {
+      totalProperties: 0,
+      availableCount: 0,
+      occupiedCount: 0,
+      totalViews: 0,
+      totalFavorites: 0,
+      pendingViewingRequests: 0,
+    },
+  );
+}

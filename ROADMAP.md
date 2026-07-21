@@ -111,9 +111,30 @@ native clustering library; revisit if listing volume grows large enough to need 
 
 - [x] Favorites: add/remove, synced to Supabase (`useToggleFavorite`, optimistic updates), and a
       basic list screen (`app/(tabs)/favorites.tsx`) — offline cache still TODO
-- [ ] Landlord dashboard: my properties, add/edit/delete property (full form + validation +
-      media upload), viewing requests inbox, basic analytics
-- [ ] Caretaker view: assigned properties, confirm/reschedule viewings, mark rented
+- [x] Landlord dashboard (`app/landlord/index.tsx`): analytics summary (listings, total views,
+      favorites, pending viewing requests), "My properties" list with cover image, status badge,
+      pending-request count, edit/delete actions. Route-guarded to landlord/property_manager/admin
+      roles via `app/landlord/_layout.tsx`; entry point wired up from Profile.
+- [x] Add/edit property form (`app/landlord/property-form.tsx`): full field set (type, status,
+      bed/bath, size, rent/deposit/service charge, amenity toggles, address/landmarks/security/house
+      rules) via react-hook-form + zod (`src/lib/validation/property.ts`), multi-image picker with
+      direct Cloudinary upload and per-image delete (`src/lib/properties.ts` CRUD helpers,
+      `src/hooks/useLandlordProperties.ts`)
+- [x] Viewing requests inbox (`app/landlord/requests.tsx`): lists requests across all of a
+      landlord/caretaker's properties with tenant name/phone/notes, confirm/decline/mark-completed
+      actions
+- [ ] Caretaker-specific view (reassign/mark rented) still shares the same dashboard as landlords —
+      revisit once caretaker assignment UI exists (currently only settable via `caretaker_id` on the
+      property form, no picker yet)
+- [ ] Not yet built: analytics beyond the basic counts (e.g. views-over-time), offline cache for
+      dashboard data, and image reordering/setting a specific cover photo
+- [ ] `tenant:profiles!viewing_requests_tenant_id_fkey` embed in `getViewingRequestsForLandlord`
+      assumes Postgres's default FK constraint name — verify against real generated Supabase types
+      once Phase 1's migration has actually been run, and adjust if the relationship name differs
+- [ ] None of this has been run against a real Expo/Supabase environment yet (no pnpm/Expo runtime
+      available in this environment) — install deps and smoke-test the whole flow (add property →
+      upload photos → edit → confirm a viewing request → delete) on a device/simulator before
+      shipping
 
 ---
 

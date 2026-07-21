@@ -69,14 +69,12 @@ export default function ProfileScreen() {
         {profile.role !== "tenant" ? (
           <MenuRow
             icon={Shield}
-            label="Landlord / caretaker dashboard"
-            subtitle="Coming soon"
-            onPress={() =>
-              Alert.alert(
-                "Coming soon",
-                "The landlord and caretaker dashboard is being built next (Phase 4).",
-              )
+            label={
+              profile.role === "property_manager"
+                ? "Caretaker dashboard"
+                : "Landlord dashboard"
             }
+            onPress={() => router.push("/landlord")}
           />
         ) : null}
       </View>
