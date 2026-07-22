@@ -1,5 +1,5 @@
 import { Redirect, Tabs } from "expo-router";
-import { Home, MapPin, Heart, User } from "lucide-react-native";
+import { Home, MapPin, Heart, MessageCircle, User } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function TabsLayout() {
@@ -38,6 +38,13 @@ export default function TabsLayout() {
         options={{
           title: "Favorites",
           tabBarIcon: ({ color, size }) => <Heart color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: "Messages",
+          tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size} />,
         }}
       />
       <Tabs.Screen

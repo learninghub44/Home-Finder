@@ -371,6 +371,14 @@ export interface Database {
         Args: { target_property_id: string };
         Returns: void;
       };
+      get_or_create_conversation: {
+        Args: { other_profile_id: string; for_property_id?: string | null };
+        Returns: string;
+      };
+      get_my_conversations: {
+        Args: Record<string, never>;
+        Returns: unknown[];
+      };
     };
   };
 }

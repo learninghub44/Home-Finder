@@ -1,7 +1,7 @@
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { ChevronRight, Heart, Shield, User as UserIcon } from "lucide-react-native";
+import { CalendarClock, ChevronRight, Heart, Shield, User as UserIcon } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { AppButton } from "@/components/AppButton";
 
@@ -66,6 +66,13 @@ export default function ProfileScreen() {
 
       <View className="px-4">
         <MenuRow icon={Heart} label="My favorites" onPress={() => router.push("/(tabs)/favorites")} />
+        {profile.role === "tenant" ? (
+          <MenuRow
+            icon={CalendarClock}
+            label="My viewing requests"
+            onPress={() => router.push("/my-requests")}
+          />
+        ) : null}
         {profile.role !== "tenant" ? (
           <MenuRow
             icon={Shield}

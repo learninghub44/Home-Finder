@@ -824,3 +824,223 @@ $$;
 
 revoke all on function public.landlord_views_over_time(uuid, integer) from public;
 grant execute on function public.landlord_views_over_time(uuid, integer) to authenticated;
+
+-- ============================================================================
+-- Phase 5 — Viewing request lifecycle & realtime chat
+-- ============================================================================
+
+-- Recipients need to mark a message read, but must not be able to edit the
+-- sender's content — only read_at is meant to change here, and that's
+-- enforced at the app layer (the client only ever sends { read_at }).
+create policy "messages_participants_update_read" on public.messages
+  for update using (
+    sender_id <> auth.uid()
+    and exists (
+      select 1 from public.conversations c
+      where c.id = conversation_id and auth.uid() in (c.participant_one, c.participant_two)
+    )
+  )
+  with check (sender_id <> auth.uid());
+
+-- get_or_create_conversation: finds the existing 1:1 (optionally property-scoped)
+-- conversation between the caller and another profile, or creates it. Runs
+-- SECURITY INVOKER — the conversations_insert/select RLS policies already permit
+-- this since the caller is always one of the two participants. Participant
+-- columns are stored in a canonical (least, greatest) order so the same pair
+-- can never end up with two separate conversation rows for the same property.
+create or replace function public.get_or_create_conversation(
+  other_profile_id uuid,
+  for_property_id uuid default null
+)
+returns uuid
+language plpgsql
+as $$
+declare
+  p1 uuid;
+  p2 uuid;
+  conv_id uuid;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+  if other_profile_id = auth.uid() then
+    raise exception 'Cannot start a conversation with yourself';
+  end if;
+
+  p1 := least(auth.uid(), other_profile_id);
+  p2 := greatest(auth.uid(), other_profile_id);
+
+  select id into conv_id from public.conversations
+  where participant_one = p1 and participant_two = p2
+    and ((for_property_id is null and property_id is null) or property_id = for_property_id)
+  limit 1;
+
+  if conv_id is null then
+    insert into public.conversations (property_id, participant_one, participant_two)
+    values (for_property_id, p1, p2)
+    returning id into conv_id;
+  end if;
+
+  return conv_id;
+end;
+$$;
+
+revoke all on function public.get_or_create_conversation(uuid, uuid) from public;
+grant execute on function public.get_or_create_conversation(uuid, uuid) to authenticated;
+
+-- get_my_conversations: conversation list for the Messages tab — other
+-- participant's name/avatar, the property it's attached to (if any), the
+-- last message preview, and an unread count, in one round trip. SECURITY
+-- INVOKER: conversations RLS already scopes rows to the caller, and profiles
+-- are readable by any authenticated user.
+create or replace function public.get_my_conversations()
+returns setof jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'id', c.id,
+    'property_id', c.property_id,
+    'property_title', pr.title,
+    'other_participant', jsonb_build_object(
+      'id', op.id, 'full_name', op.full_name, 'avatar_url', op.avatar_url
+    ),
+    'last_message', (
+      select jsonb_build_object(
+        'body', m.body, 'image_url', m.image_url,
+        'created_at', m.created_at, 'sender_id', m.sender_id
+      )
+      from public.messages m where m.conversation_id = c.id
+      order by m.created_at desc limit 1
+    ),
+    'unread_count', (
+      select count(*)::int from public.messages m
+      where m.conversation_id = c.id and m.sender_id <> auth.uid() and m.read_at is null
+    ),
+    'created_at', c.created_at
+  )
+  from public.conversations c
+  left join public.properties pr on pr.id = c.property_id
+  join public.profiles op
+    on op.id = (case when c.participant_one = auth.uid() then c.participant_two else c.participant_one end)
+  where auth.uid() in (c.participant_one, c.participant_two)
+  order by coalesce(
+    (select max(m2.created_at) from public.messages m2 where m2.conversation_id = c.id),
+    c.created_at
+  ) desc;
+$$;
+
+grant execute on function public.get_my_conversations() to authenticated;
+
+-- Notify the landlord/caretaker on a new request, and whichever side didn't
+-- just act on a status change (tenant requests → landlord/caretaker sees it;
+-- landlord confirms/declines/reschedules → tenant sees it; tenant responds to
+-- a reschedule → landlord/caretaker sees it). Writes to `notifications` only —
+-- turning these into push notifications is Phase 6's job.
+create or replace function public.notify_viewing_request_change()
+returns trigger as $$
+declare
+  v_landlord_id uuid;
+  v_caretaker_id uuid;
+  v_prop_title text;
+  v_tenant_name text;
+begin
+  select p.landlord_id, p.caretaker_id, p.title
+    into v_landlord_id, v_caretaker_id, v_prop_title
+  from public.properties p where p.id = new.property_id;
+
+  if tg_op = 'INSERT' then
+    select full_name into v_tenant_name from public.profiles where id = new.tenant_id;
+
+    insert into public.notifications (profile_id, type, title, body, data)
+    values (
+      v_landlord_id, 'viewing_update', 'New viewing request',
+      coalesce(v_tenant_name, 'A tenant') || ' requested a viewing for ' || v_prop_title,
+      jsonb_build_object('viewing_request_id', new.id, 'property_id', new.property_id)
+    );
+    if v_caretaker_id is not null then
+      insert into public.notifications (profile_id, type, title, body, data)
+      values (
+        v_caretaker_id, 'viewing_update', 'New viewing request',
+        coalesce(v_tenant_name, 'A tenant') || ' requested a viewing for ' || v_prop_title,
+        jsonb_build_object('viewing_request_id', new.id, 'property_id', new.property_id)
+      );
+    end if;
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' and new.status is distinct from old.status then
+    if new.responder_id = new.tenant_id then
+      insert into public.notifications (profile_id, type, title, body, data)
+      values (
+        v_landlord_id, 'viewing_update', 'Viewing request updated',
+        'A tenant marked their viewing request as ' || new.status || ' for ' || v_prop_title,
+        jsonb_build_object('viewing_request_id', new.id, 'property_id', new.property_id)
+      );
+      if v_caretaker_id is not null then
+        insert into public.notifications (profile_id, type, title, body, data)
+        values (
+          v_caretaker_id, 'viewing_update', 'Viewing request updated',
+          'A tenant marked their viewing request as ' || new.status || ' for ' || v_prop_title,
+          jsonb_build_object('viewing_request_id', new.id, 'property_id', new.property_id)
+        );
+      end if;
+    else
+      insert into public.notifications (profile_id, type, title, body, data)
+      values (
+        new.tenant_id, 'viewing_update', 'Viewing request ' || new.status,
+        'Your viewing request for ' || v_prop_title || ' is now ' || new.status,
+        jsonb_build_object('viewing_request_id', new.id, 'property_id', new.property_id)
+      );
+    end if;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists viewing_requests_notify on public.viewing_requests;
+create trigger viewing_requests_notify
+  after insert or update on public.viewing_requests
+  for each row execute procedure public.notify_viewing_request_change();
+
+-- Notify the other participant on a new chat message.
+create or replace function public.notify_new_message()
+returns trigger as $$
+declare
+  v_recipient uuid;
+  v_sender_name text;
+begin
+  select case when c.participant_one = new.sender_id then c.participant_two else c.participant_one end
+    into v_recipient
+  from public.conversations c where c.id = new.conversation_id;
+
+  select full_name into v_sender_name from public.profiles where id = new.sender_id;
+
+  insert into public.notifications (profile_id, type, title, body, data)
+  values (
+    v_recipient, 'message', coalesce(v_sender_name, 'New message'),
+    coalesce(nullif(new.body, ''), 'Sent a photo'),
+    jsonb_build_object('conversation_id', new.conversation_id, 'message_id', new.id)
+  );
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists messages_notify on public.messages;
+create trigger messages_notify
+  after insert on public.messages
+  for each row execute procedure public.notify_new_message();
+
+-- Realtime: the chat screen subscribes to new rows on `messages` via
+-- postgres_changes. `supabase_realtime` always exists on a Supabase project;
+-- guard with a check so re-running this file doesn't error if it's already added.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table public.messages;
+  end if;
+end $$;

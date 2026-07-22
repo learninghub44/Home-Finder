@@ -14,6 +14,7 @@ import {
   Flag,
   Heart,
   Mail,
+  MessageCircle,
   Phone,
   Ruler,
   Share2,
@@ -26,8 +27,11 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { usePropertyDetails, useRecordPropertyView, useToggleFavorite } from "@/hooks/useProperties";
 import { useReportProperty } from "@/hooks/useReportProperty";
+import { useCreateViewingRequest } from "@/hooks/useViewingRequests";
+import { useStartConversation } from "@/hooks/useChat";
 import { ImageGallery } from "@/components/ImageGallery";
 import { ReportModal } from "@/components/ReportModal";
+import { RequestViewingModal } from "@/components/RequestViewingModal";
 import { ErrorState } from "@/components/ErrorState";
 import { AppButton } from "@/components/AppButton";
 import { resolveAmenityIcon } from "@/lib/icons";
@@ -46,7 +50,10 @@ export default function PropertyDetailsScreen() {
   const recordView = useRecordPropertyView(id);
   const toggleFavorite = useToggleFavorite();
   const reportProperty = useReportProperty();
+  const createViewingRequest = useCreateViewingRequest();
+  const startConversation = useStartConversation();
   const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [requestModalVisible, setRequestModalVisible] = useState(false);
 
   useEffect(() => {
     recordView();
@@ -105,6 +112,18 @@ export default function PropertyDetailsScreen() {
     if (property.latitude == null || property.longitude == null) return;
     const url = `https://www.google.com/maps/dir/?api=1&destination=${property.latitude},${property.longitude}`;
     Linking.openURL(url);
+  };
+
+  const handleMessage = (otherProfileId: string | undefined) => {
+    if (!otherProfileId) return;
+    if (!profile?.id) {
+      router.push("/(auth)/login");
+      return;
+    }
+    startConversation.mutate(
+      { otherProfileId, propertyId: property.id },
+      { onSuccess: (conversationId) => router.push(`/chat/${conversationId}`) },
+    );
   };
 
   const featureFlags: { label: string; active: boolean; icon: typeof Droplet }[] = [
@@ -309,6 +328,7 @@ export default function PropertyDetailsScreen() {
               verified={property.landlord.id_verified}
               onCall={() => handleCall(property.landlord.contact_phone)}
               onEmail={() => handleEmail(property.landlord.contact_email)}
+              onMessage={() => handleMessage(property.landlord.id)}
               hasPhone={!!property.landlord.contact_phone}
               hasEmail={!!property.landlord.contact_email}
             />
@@ -323,6 +343,7 @@ export default function PropertyDetailsScreen() {
                 avatarUrl={property.caretaker.avatar_url}
                 onCall={() => handleCall(property.caretaker!.contact_phone)}
                 onEmail={() => handleEmail(property.caretaker!.contact_email)}
+                onMessage={() => handleMessage(property.caretaker!.id)}
                 hasPhone={!!property.caretaker.contact_phone}
                 hasEmail={!!property.caretaker.contact_email}
               />
@@ -359,7 +380,7 @@ export default function PropertyDetailsScreen() {
                 router.push("/(auth)/login");
                 return;
               }
-              handleCall(property.landlord.contact_phone ?? property.caretaker?.contact_phone ?? null);
+              setRequestModalVisible(true);
             }}
           />
         </View>
@@ -378,6 +399,18 @@ export default function PropertyDetailsScreen() {
           reportProperty.mutate(
             { propertyId: property.id, reportedUserId: property.landlord_id, reason, details },
             { onSuccess: () => setReportModalVisible(false) },
+          );
+        }}
+      />
+
+      <RequestViewingModal
+        visible={requestModalVisible}
+        isSubmitting={createViewingRequest.isPending}
+        onClose={() => setRequestModalVisible(false)}
+        onSubmit={({ requestedDate, requestedTime, notes }) => {
+          createViewingRequest.mutate(
+            { propertyId: property.id, requestedDate, requestedTime, notes },
+            { onSuccess: () => setRequestModalVisible(false) },
           );
         }}
       />
@@ -410,6 +443,7 @@ function ContactCard({
   verified,
   onCall,
   onEmail,
+  onMessage,
   hasPhone,
   hasEmail,
 }: {
@@ -419,6 +453,7 @@ function ContactCard({
   verified?: boolean;
   onCall: () => void;
   onEmail: () => void;
+  onMessage: () => void;
   hasPhone: boolean;
   hasEmail: boolean;
 }) {
@@ -445,6 +480,14 @@ function ContactCard({
         ) : null}
       </View>
       <View className="flex-row gap-2">
+        <Pressable
+          onPress={onMessage}
+          accessibilityRole="button"
+          accessibilityLabel={`Message ${name}`}
+          className="h-9 w-9 items-center justify-center rounded-full border border-brand-500"
+        >
+          <MessageCircle size={15} color="#2C7A4B" />
+        </Pressable>
         {hasPhone ? (
           <Pressable
             onPress={onCall}

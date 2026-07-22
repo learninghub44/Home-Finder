@@ -16,6 +16,7 @@ import {
   updateViewingRequestStatus,
   type PropertyFormInput,
 } from "@/lib/properties";
+import { proposeViewingReschedule } from "@/lib/viewingRequests";
 import { useAuth } from "./useAuth";
 import type { ViewingStatus } from "@/types/database";
 
@@ -254,6 +255,43 @@ export function useUpdateViewingRequestStatus() {
       Toast.show({
         type: "error",
         text1: "Couldn't update request",
+        text2: err instanceof Error ? err.message : undefined,
+      });
+    },
+  });
+}
+
+/** Landlord/caretaker proposes a different date/time instead of confirming or declining. */
+export function useProposeReschedule() {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      requestId,
+      requestedDate,
+      requestedTime,
+    }: {
+      requestId: string;
+      requestedDate: string;
+      requestedTime: string;
+    }) => {
+      if (!profile?.id) throw new Error("Sign in to respond to viewing requests.");
+      await proposeViewingReschedule({
+        requestId,
+        responderId: profile.id,
+        requestedDate,
+        requestedTime,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["landlord", "viewing-requests"] });
+      Toast.show({ type: "success", text1: "New time proposed", text2: "The tenant will be notified." });
+    },
+    onError: (err) => {
+      Toast.show({
+        type: "error",
+        text1: "Couldn't propose a new time",
         text2: err instanceof Error ? err.message : undefined,
       });
     },

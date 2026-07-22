@@ -160,12 +160,31 @@ native clustering library; revisit if listing volume grows large enough to need 
 ---
 
 ## Phase 5 — Viewing Requests & Realtime Chat
-**Status: TODO**
+**Status: Built, not yet run against a real Expo/Supabase environment**
 
-- [ ] Viewing request flow: tenant requests → landlord/caretaker accept/decline/reschedule →
-      push notification on status change
-- [ ] One-to-one chat over Supabase Realtime: read receipts, typing indicators, image sharing,
-      block/report
+- [x] Viewing request flow: tenant requests via `RequestViewingModal` on the property page →
+      landlord/caretaker confirm/decline/mark-completed or propose a new time
+      (`app/landlord/requests.tsx`) → tenant accepts/declines the proposed time
+      (`app/my-requests.tsx`). Status changes write to the `notifications` table via new DB
+      triggers (`notify_viewing_request_change`) — turning those into push notifications is
+      Phase 6.
+- [x] One-to-one chat over Supabase Realtime (`app/(tabs)/messages.tsx`, `app/chat/[id].tsx`):
+      conversation list with unread counts and last-message preview, live message delivery via
+      `postgres_changes`, read receipts (auto-marks read on open). "Message" entry points added
+      to the property page's landlord/caretaker cards and the landlord requests inbox.
+- [ ] Not built: typing indicators, sending images from the chat composer (the message bubble
+      *renders* `image_url` if present, but there's no picker/upload wired to the send button
+      yet), block/report from within a chat.
+- [ ] Schema additions for this phase (read-receipt RLS policy, `get_or_create_conversation`,
+      `get_my_conversations`, the two notification triggers, and adding `messages` to the
+      `supabase_realtime` publication) are appended to the bottom of `schema.sql` — re-run the
+      full file against the Supabase project once Phase 1 happens; every statement here is
+      idempotent (`create or replace`, `drop trigger if exists`, a guarded publication check) so
+      it's safe alongside the parts you may have already run.
+- [ ] Untested end-to-end — no pnpm/Expo runtime available in this sandbox (see Phase 1). Smoke
+      test before shipping: request a viewing → landlord proposes a new time → tenant accepts →
+      landlord marks completed; also send messages both directions and confirm unread counts and
+      read receipts behave, and that realtime delivery works with the app backgrounded/foregrounded.
 
 ---
 
