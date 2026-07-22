@@ -340,6 +340,26 @@ export interface PropertyDetailsResponse {
   is_favorited: boolean;
 }
 
+/** Row shape returned by the `platform_analytics` RPC — admin dashboard stat rollup. */
+export interface PlatformAnalytics {
+  total_users: number;
+  total_tenants: number;
+  total_landlords: number;
+  total_caretakers: number;
+  suspended_users: number;
+  total_properties: number;
+  available_properties: number;
+  occupied_properties: number;
+  reserved_properties: number;
+  removed_properties: number;
+  total_views: number;
+  total_favorites: number;
+  open_reports: number;
+  pending_viewing_requests: number;
+  new_users_last_30d: number;
+  new_properties_last_30d: number;
+}
+
 /**
  * Minimal Supabase generated-types shape. Once the schema is finalized, replace this
  * with the real output of `supabase gen types typescript` for full query-builder safety.
@@ -410,6 +430,10 @@ export interface Database {
       get_my_conversations: {
         Args: Record<string, never>;
         Returns: unknown[];
+      };
+      platform_analytics: {
+        Args: Record<string, never>;
+        Returns: PlatformAnalytics[];
       };
     };
   };

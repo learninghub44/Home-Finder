@@ -231,11 +231,43 @@ native clustering library; revisit if listing volume grows large enough to need 
 ---
 
 ## Phase 7 — Admin
-**Status: TODO**
+**Status: Built, not yet run against a real Expo/Supabase environment**
 
-- [ ] Admin-only role and route guard
-- [ ] User management, listing moderation/removal, report review, category/location management,
-      basic analytics dashboard
+- [x] Admin-only role and route guard: `app/admin/_layout.tsx` (mirrors the `/landlord` guard —
+      redirects signed-out users to login, non-admins to the tabs)
+- [x] Admin dashboard (`app/admin/index.tsx`): platform-wide stat rollup (users by role, suspended
+      count, listings by status, open reports, pending viewing requests, 30-day new user/listing
+      counts, total views/favorites) via a new `platform_analytics()` RPC (`schema.sql`) — single
+      round trip, re-checks `is_admin()` itself since it bypasses RLS with `security definer`
+- [x] User management (`app/admin/users.tsx`): search by name/phone, filter by role, suspend/
+      reinstate (`profiles.is_suspended`), change role — all via existing RLS
+      (`profiles_update_own` already allows `is_admin()`), no schema change needed
+- [x] Listing moderation (`app/admin/listings.tsx`): search/filter across every listing regardless
+      of owner or status (existing `properties_select_available_or_owner` policy's `is_admin()`
+      clause already covers this), open-report count per listing, quick "remove from listings" /
+      restore (status change) or permanent delete
+- [x] Report review (`app/admin/reports.tsx`): filter by status, open → reviewing → resolved/
+      dismissed workflow, shows reporter/reported-user names and linked listing (batch-fetched,
+      same no-guessed-FK-name approach as `getViewingRequestsForLandlord`), tap-through to the
+      reported listing
+- [x] Category/location management (`app/admin/locations.tsx`): tabbed add/remove for `locations`
+      (county/town/estate) and `amenities`. Added the missing `locations_admin_delete` RLS policy
+      (locations previously only had admin insert/update, not delete — amenities already used a
+      single `for all` policy so delete was already covered there)
+- [x] Entry point wired up from Profile → "Admin dashboard" (admin role only; no longer shows the
+      landlord-dashboard row, which doesn't apply to admins)
+- [ ] Untested end-to-end — no pnpm/Expo runtime available in this sandbox (see Phase 1), and the
+      new `platform_analytics()` RPC and `locations_admin_delete` policy need to be re-run against
+      the Supabase project (appended to the bottom of `schema.sql`, idempotent `create or replace`
+      for the function; the policy itself is not re-run-safe if it already exists — same convention
+      as the rest of this file's later-added policies, drop it manually first if re-applying).
+      Smoke test before shipping: sign in as an admin, verify the dashboard numbers, suspend/
+      reinstate a test user, change a user's role, remove and restore a listing, walk a report
+      through open → reviewing → resolved, add and remove a location and an amenity.
+- [ ] Not built: bulk actions (bulk-suspend, bulk-dismiss reports), audit log of admin actions,
+      pagination UI beyond the initial page (queries are paged server-side via `.range()` but the
+      screens don't yet expose a "load more" control), amenity icon editing (icon is settable on
+      create only, no way to change it after)
 
 ---
 

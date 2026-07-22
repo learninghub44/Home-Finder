@@ -1197,3 +1197,74 @@ create trigger properties_notify_favorites
 --     Edge Function: send-push
 -- push_tokens/notifications RLS (both owner-only, `for all`) already covers
 -- everything the client needs — no additional policies required here.
+
+-- ============================================================================
+-- Phase 7 — Admin
+-- ============================================================================
+
+-- locations previously had admin-only insert/update but no delete policy —
+-- admin's location management screen needs to retire unused county/town/estate
+-- rows. amenities already used a single `for all` policy so delete was already
+-- covered there; locations used split insert/update policies and was missed.
+create policy "locations_admin_delete" on public.locations
+  for delete using (public.is_admin());
+
+-- platform_analytics: single round-trip stat rollup for the admin dashboard.
+-- Runs SECURITY DEFINER so it can count across every user/property/report
+-- regardless of RLS, but explicitly re-checks is_admin() itself first — this
+-- function is more sensitive than landlord_views_over_time (which only ever
+-- aggregates a single caller's own properties), since it exposes platform-wide
+-- counts, so it does not rely on the caller only ever being invoked from an
+-- admin-gated screen.
+create or replace function public.platform_analytics()
+returns table (
+  total_users bigint,
+  total_tenants bigint,
+  total_landlords bigint,
+  total_caretakers bigint,
+  suspended_users bigint,
+  total_properties bigint,
+  available_properties bigint,
+  occupied_properties bigint,
+  reserved_properties bigint,
+  removed_properties bigint,
+  total_views bigint,
+  total_favorites bigint,
+  open_reports bigint,
+  pending_viewing_requests bigint,
+  new_users_last_30d bigint,
+  new_properties_last_30d bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  return query
+  select
+    (select count(*) from public.profiles),
+    (select count(*) from public.profiles where role = 'tenant'),
+    (select count(*) from public.profiles where role = 'landlord'),
+    (select count(*) from public.profiles where role = 'property_manager'),
+    (select count(*) from public.profiles where is_suspended),
+    (select count(*) from public.properties),
+    (select count(*) from public.properties where status = 'available'),
+    (select count(*) from public.properties where status = 'occupied'),
+    (select count(*) from public.properties where status = 'reserved'),
+    (select count(*) from public.properties where status = 'removed'),
+    (select coalesce(sum(view_count), 0) from public.properties),
+    (select count(*) from public.favorites),
+    (select count(*) from public.reports where status = 'open'),
+    (select count(*) from public.viewing_requests where status = 'pending'),
+    (select count(*) from public.profiles where created_at >= now() - interval '30 days'),
+    (select count(*) from public.properties where created_at >= now() - interval '30 days');
+end;
+$$;
+
+revoke all on function public.platform_analytics() from public;
+grant execute on function public.platform_analytics() to authenticated;
