@@ -10,6 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { toFriendlyAuthError } from "@/lib/errors";
+import { registerPushToken } from "@/lib/pushNotifications";
 import type { Profile, UserRole } from "@/types/database";
 
 interface AuthResult {
@@ -89,6 +90,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
       subscription.subscription.unsubscribe();
     };
   }, [loadProfile]);
+
+  // Register this device's Expo push token whenever we have a signed-in
+  // profile. Cheap to call repeatedly — upserts on (profile_id, token), and
+  // getExpoPushToken() itself no-ops on simulators or without an EAS project.
+  useEffect(() => {
+    if (profile?.id) {
+      registerPushToken(profile.id).catch((err) =>
+        console.warn("Push token registration failed:", err),
+      );
+    }
+  }, [profile?.id]);
 
   const signUp = useCallback<AuthContextValue["signUp"]>(
     async ({ fullName, email, password, role }) => {

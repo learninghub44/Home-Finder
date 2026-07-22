@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, Search, SlidersHorizontal, X } from "lucide-react-native";
+import { ArrowLeft, BookmarkPlus, Search, SlidersHorizontal, X } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { useInfiniteSearchProperties, useToggleFavorite } from "@/hooks/useProperties";
+import { useCreateSavedSearch } from "@/hooks/useSavedSearches";
 import { PropertyCard } from "@/components/PropertyCard";
 import { PropertyCardSkeleton } from "@/components/PropertyCardSkeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { Chip } from "@/components/Chip";
+import { SaveSearchModal } from "@/components/SaveSearchModal";
 import { EMPTY_FILTERS, FilterSheet, type FilterState } from "@/components/FilterSheet";
 import type { PropertyCard as PropertyCardType, PropertyType, SortBy } from "@/types/database";
 
@@ -21,19 +23,50 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 export default function SearchScreen() {
-  const params = useLocalSearchParams<{ sort?: string; type?: string; q?: string }>();
+  const params = useLocalSearchParams<{ sort?: string; type?: string; q?: string; savedFilters?: string }>();
   const { profile } = useAuth();
   const { coords } = useUserLocation();
   const toggleFavorite = useToggleFavorite();
 
-  const [searchInput, setSearchInput] = useState(params.q ?? "");
-  const [searchText, setSearchText] = useState(params.q ?? "");
+  const parsedSavedFilters = useMemo(() => {
+    if (!params.savedFilters) return null;
+    try {
+      return JSON.parse(params.savedFilters) as {
+        search_text?: string | null;
+        min_rent?: number | null;
+        max_rent?: number | null;
+        bedrooms_filter?: number | null;
+        property_types?: PropertyType[] | null;
+        county_filter?: string | null;
+        town_filter?: string | null;
+      };
+    } catch {
+      return null;
+    }
+  }, [params.savedFilters]);
+
+  const [searchInput, setSearchInput] = useState(parsedSavedFilters?.search_text ?? params.q ?? "");
+  const [searchText, setSearchText] = useState(parsedSavedFilters?.search_text ?? params.q ?? "");
   const [sortBy, setSortBy] = useState<SortBy>((params.sort as SortBy) ?? "newest");
   const [filtersVisible, setFiltersVisible] = useState(false);
-  const [filters, setFilters] = useState<FilterState>({
-    ...EMPTY_FILTERS,
-    propertyTypes: (params.type?.split(",").filter(Boolean) as PropertyType[]) ?? [],
-  });
+  const [saveSearchVisible, setSaveSearchVisible] = useState(false);
+  const createSavedSearch = useCreateSavedSearch();
+  const [filters, setFilters] = useState<FilterState>(
+    parsedSavedFilters
+      ? {
+          ...EMPTY_FILTERS,
+          minRent: parsedSavedFilters.min_rent ? String(parsedSavedFilters.min_rent) : "",
+          maxRent: parsedSavedFilters.max_rent ? String(parsedSavedFilters.max_rent) : "",
+          bedrooms: parsedSavedFilters.bedrooms_filter ?? null,
+          propertyTypes: parsedSavedFilters.property_types ?? [],
+          county: parsedSavedFilters.county_filter ?? null,
+          town: parsedSavedFilters.town_filter ?? null,
+        }
+      : {
+          ...EMPTY_FILTERS,
+          propertyTypes: (params.type?.split(",").filter(Boolean) as PropertyType[]) ?? [],
+        },
+  );
 
   // Debounce free-text search input.
   useEffect(() => {
@@ -124,6 +157,22 @@ export default function SearchScreen() {
             </View>
           ) : null}
         </Pressable>
+        {activeFilterCount || searchText ? (
+          <Pressable
+            onPress={() => {
+              if (!profile?.id) {
+                router.push("/(auth)/login");
+                return;
+              }
+              setSaveSearchVisible(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Save this search"
+            className="h-11 w-11 items-center justify-center rounded-xl border border-gray-200 dark:border-gray-700"
+          >
+            <BookmarkPlus size={18} color="#0B1F17" />
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Sort chips */}
@@ -192,6 +241,29 @@ export default function SearchScreen() {
         onApply={(next) => {
           setFilters(next);
           setFiltersVisible(false);
+        }}
+      />
+
+      <SaveSearchModal
+        visible={saveSearchVisible}
+        isSubmitting={createSavedSearch.isPending}
+        onClose={() => setSaveSearchVisible(false)}
+        onSubmit={(name) => {
+          createSavedSearch.mutate(
+            {
+              name,
+              filters: {
+                search_text: resolvedFilters.search_text,
+                min_rent: resolvedFilters.min_rent,
+                max_rent: resolvedFilters.max_rent,
+                bedrooms_filter: resolvedFilters.bedrooms_filter,
+                property_types: resolvedFilters.property_types,
+                county_filter: resolvedFilters.county_filter,
+                town_filter: resolvedFilters.town_filter,
+              },
+            },
+            { onSuccess: () => setSaveSearchVisible(false) },
+          );
         }}
       />
     </View>

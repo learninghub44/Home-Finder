@@ -1044,3 +1044,156 @@ begin
     alter publication supabase_realtime add table public.messages;
   end if;
 end $$;
+
+-- ============================================================================
+-- Phase 6 — Notifications (push token registration + delivery triggers)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- saved_searches: a tenant's saved filter set, used to alert them when a
+-- matching listing goes live. `filters` mirrors a subset of the
+-- search_properties() args (see below) as plain jsonb rather than a fixed
+-- set of columns, so new filter fields don't require a migration.
+-- ----------------------------------------------------------------------------
+create table if not exists public.saved_searches (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null,
+  filters jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_saved_searches_profile on public.saved_searches(profile_id);
+
+alter table public.saved_searches enable row level security;
+
+create policy "saved_searches_owner" on public.saved_searches
+  for all using (profile_id = auth.uid()) with check (profile_id = auth.uid());
+
+-- notify_matching_saved_searches: fires when a listing becomes available
+-- (either a brand-new listing, or an existing one flipping to 'available'
+-- from something else — e.g. a landlord relisting). For every saved search
+-- whose filters the new row satisfies, insert a 'saved_search' notification.
+-- Matching only checks fields that are actually present in `filters`; an
+-- absent/null key is treated as "no constraint" on that field. Free-text
+-- search_text and amenity_ids aren't matched here (that logic lives in
+-- search_properties() and would be costly to duplicate in a trigger) — those
+-- searches still work in-app, they just won't generate alerts.
+create or replace function public.notify_matching_saved_searches()
+returns trigger as $$
+declare
+  v_search record;
+  v_county text;
+  v_town text;
+begin
+  if new.status <> 'available' then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.status = 'available' then
+    return new; -- already available before; nothing changed for alerting purposes
+  end if;
+
+  select l.county, l.town into v_county, v_town
+  from public.locations l where l.id = new.location_id;
+
+  for v_search in
+    select ss.id, ss.profile_id, ss.filters
+    from public.saved_searches ss
+    where ss.profile_id <> new.landlord_id
+      and (new.caretaker_id is null or ss.profile_id <> new.caretaker_id)
+  loop
+    if (v_search.filters ? 'min_rent') and (v_search.filters->>'min_rent') is not null
+        and new.rent_amount < (v_search.filters->>'min_rent')::numeric then
+      continue;
+    end if;
+    if (v_search.filters ? 'max_rent') and (v_search.filters->>'max_rent') is not null
+        and new.rent_amount > (v_search.filters->>'max_rent')::numeric then
+      continue;
+    end if;
+    if (v_search.filters ? 'bedrooms_filter') and (v_search.filters->>'bedrooms_filter') is not null
+        and new.bedrooms < (v_search.filters->>'bedrooms_filter')::smallint then
+      continue;
+    end if;
+    if (v_search.filters ? 'county_filter') and (v_search.filters->>'county_filter') is not null
+        and lower(coalesce(v_county, '')) <> lower(v_search.filters->>'county_filter') then
+      continue;
+    end if;
+    if (v_search.filters ? 'town_filter') and (v_search.filters->>'town_filter') is not null
+        and lower(coalesce(v_town, '')) <> lower(v_search.filters->>'town_filter') then
+      continue;
+    end if;
+    if (v_search.filters ? 'property_types') and jsonb_typeof(v_search.filters->'property_types') = 'array'
+        and jsonb_array_length(v_search.filters->'property_types') > 0
+        and not (v_search.filters->'property_types' @> to_jsonb(new.property_type::text)) then
+      continue;
+    end if;
+
+    insert into public.notifications (profile_id, type, title, body, data)
+    values (
+      v_search.profile_id, 'saved_search', 'New match for "' || v_search.name || '"',
+      new.title || coalesce(' in ' || v_town, ''),
+      jsonb_build_object('property_id', new.id, 'saved_search_id', v_search.id)
+    );
+  end loop;
+
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists properties_notify_saved_searches on public.properties;
+create trigger properties_notify_saved_searches
+  after insert or update of status on public.properties
+  for each row execute procedure public.notify_matching_saved_searches();
+
+-- notify_favorited_listing_update: fires when a listing someone has
+-- favorited either drops in price or changes status away from 'available'
+-- (occupied/reserved/removed) — the two changes a tenant actively watching a
+-- listing cares about.
+create or replace function public.notify_favorited_listing_update()
+returns trigger as $$
+declare
+  v_favoriter record;
+begin
+  if new.rent_amount is distinct from old.rent_amount and new.rent_amount < old.rent_amount then
+    for v_favoriter in
+      select f.profile_id from public.favorites f where f.property_id = new.id
+    loop
+      insert into public.notifications (profile_id, type, title, body, data)
+      values (
+        v_favoriter.profile_id, 'listing_update', 'Price drop',
+        new.title || ' is now ' || new.currency || ' ' || new.rent_amount,
+        jsonb_build_object('property_id', new.id)
+      );
+    end loop;
+  elsif new.status is distinct from old.status and old.status = 'available' and new.status <> 'available' then
+    for v_favoriter in
+      select f.profile_id from public.favorites f where f.property_id = new.id
+    loop
+      insert into public.notifications (profile_id, type, title, body, data)
+      values (
+        v_favoriter.profile_id, 'listing_update', 'Listing no longer available',
+        new.title || ' is no longer listed as available.',
+        jsonb_build_object('property_id', new.id)
+      );
+    end loop;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists properties_notify_favorites on public.properties;
+create trigger properties_notify_favorites
+  after update on public.properties
+  for each row execute procedure public.notify_favorited_listing_update();
+
+-- ----------------------------------------------------------------------------
+-- Push delivery: notifications rows are turned into Expo push notifications
+-- by the `send-push` Edge Function (see supabase/functions/send-push). This
+-- file does NOT wire up the Database Webhook that invokes it, because that
+-- requires the deployed function's project-specific URL. One-time manual
+-- step once the project exists and the function is deployed:
+--   Dashboard → Database → Webhooks → Create a new webhook
+--     Table: notifications | Events: Insert | Type: Supabase Edge Functions
+--     Edge Function: send-push
+-- push_tokens/notifications RLS (both owner-only, `for all`) already covers
+-- everything the client needs — no additional policies required here.

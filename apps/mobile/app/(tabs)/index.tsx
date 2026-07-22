@@ -8,10 +8,11 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { Search, SlidersHorizontal } from "lucide-react-native";
+import { Bell, Search, SlidersHorizontal } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { useHomeFeed, useToggleFavorite } from "@/hooks/useProperties";
+import { useUnreadNotificationCount } from "@/hooks/useNotifications";
 import { PropertyCard } from "@/components/PropertyCard";
 import { PropertyCardSkeletonRow } from "@/components/PropertyCardSkeleton";
 import { EmptyState } from "@/components/EmptyState";
@@ -25,6 +26,7 @@ export default function Home() {
   const { featured, nearby, recent, bedsitters, isRefreshing, refetchAll } =
     useHomeFeed(coords);
   const toggleFavorite = useToggleFavorite();
+  const { data: unreadCount } = useUnreadNotificationCount();
 
   const openProperty = useCallback((id: string) => {
     router.push(`/property/${id}`);
@@ -66,12 +68,33 @@ export default function Home() {
     >
       {/* Header */}
       <View className="px-4 pb-4 pt-14">
-        <Text className="text-sm text-gray-500">
-          {profile?.full_name ? `Hi ${profile.full_name.split(" ")[0]},` : "Welcome,"}
-        </Text>
-        <Text className="text-2xl font-bold text-brand-900 dark:text-white">
-          Find your next home
-        </Text>
+        <View className="flex-row items-start justify-between">
+          <View>
+            <Text className="text-sm text-gray-500">
+              {profile?.full_name ? `Hi ${profile.full_name.split(" ")[0]},` : "Welcome,"}
+            </Text>
+            <Text className="text-2xl font-bold text-brand-900 dark:text-white">
+              Find your next home
+            </Text>
+          </View>
+          {profile ? (
+            <Pressable
+              onPress={() => router.push("/notifications")}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+              className="relative mt-1 h-10 w-10 items-center justify-center rounded-full bg-muted-light dark:bg-muted-dark"
+            >
+              <Bell size={18} color="#0B1F17" />
+              {unreadCount ? (
+                <View className="absolute -right-0.5 -top-0.5 h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-500 px-1">
+                  <Text className="text-[9px] font-bold text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          ) : null}
+        </View>
 
         <Pressable
           onPress={() => router.push("/search")}

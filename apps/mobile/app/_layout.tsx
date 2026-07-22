@@ -1,7 +1,8 @@
 import "@/theme/global.css";
 import { useEffect, useState, useCallback } from "react";
-import { Slot } from "expo-router";
+import { Slot, router, type Href } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Notifications from "expo-notifications";
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
@@ -14,9 +15,10 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from "@expo-google-fonts/inter";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { resolveNotificationRoute } from "@/lib/notifications";
 import { View } from "react-native";
 
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -91,6 +93,7 @@ export default function RootLayout() {
         <AuthProvider>
           <View className="flex-1 bg-white dark:bg-surface-dark" onLayout={onLayoutRootView}>
             <OfflineBanner />
+            <NotificationTapRouter />
             <Slot />
           </View>
           <Toast />
@@ -98,4 +101,21 @@ export default function RootLayout() {
       </PersistQueryClientProvider>
     </ErrorBoundary>
   );
+}
+
+/** Navigates to the right screen when the user taps a push notification (foreground, background, or cold start). */
+function NotificationTapRouter() {
+  const { profile } = useAuth();
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const type = typeof data?.type === "string" ? data.type : "";
+      const route = resolveNotificationRoute(type, data, profile?.role === "tenant");
+      if (route) router.push(route as Href);
+    });
+    return () => subscription.remove();
+  }, [profile?.role]);
+
+  return null;
 }

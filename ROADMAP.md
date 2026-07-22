@@ -189,11 +189,44 @@ native clustering library; revisit if listing volume grows large enough to need 
 ---
 
 ## Phase 6 — Notifications
-**Status: TODO**
+**Status: Built, not yet run against a real Expo/Supabase environment**
 
-- [ ] Expo push token registration, stored per-user in Supabase
-- [ ] Triggers/Edge Functions to send notifications for: new messages, viewing status changes,
-      saved-search alerts, listing updates
+- [x] Expo push token registration: `src/lib/pushNotifications.ts` requests permission and fetches
+      the device's Expo push token (skips gracefully on simulators or if no EAS project is
+      configured), upserted into `push_tokens` automatically whenever a profile loads
+      (wired into `useAuth`'s session effect). **Requires `eas init`** — `app.json`'s
+      `extra.eas.projectId` is currently a placeholder (`REPLACE_WITH_EAS_PROJECT_ID`); replace it
+      with the real project ID or push tokens will never be issued.
+- [x] Delivery: `supabase/functions/send-push/index.ts`, an Edge Function that takes a
+      `notifications` insert webhook payload, looks up the recipient's tokens, and forwards to
+      Expo's push API (cleans up tokens Expo reports as `DeviceNotRegistered`). **Manual one-time
+      step once deployed**: Dashboard → Database → Webhooks → new webhook on `notifications`
+      insert → target the `send-push` function (see the comment at the bottom of `schema.sql`) —
+      this can't be done from SQL since it needs the deployed function's project-specific URL.
+- [x] New-message and viewing-status-change notifications: already wired in Phase 5
+      (`notify_new_message`, `notify_viewing_request_change` triggers) — this phase adds the push
+      delivery layer on top, they needed no changes.
+- [x] Saved-search alerts: new `saved_searches` table (RLS owner-only) + `notify_matching_saved_searches`
+      trigger, fires when a listing becomes available and matches a saved filter set (rent range,
+      bedrooms, county/town, property type — free-text and amenities aren't matched by the trigger,
+      see the comment in `schema.sql`). UI: "Save this search" on the Search screen
+      (`app/search.tsx`), manage/apply at `app/saved-searches.tsx` (Profile → Saved searches).
+- [x] Listing-update alerts: new `notify_favorited_listing_update` trigger — notifies everyone who
+      favorited a listing on a price drop or a status change away from "available".
+- [x] In-app notifications inbox (`app/notifications.tsx`, bell icon + unread badge on the Home
+      tab): list, mark-one/mark-all read, tap-to-navigate. Same tap routing
+      (`resolveNotificationRoute` in `src/lib/notifications.ts`) is reused for actual push-tap
+      handling in `app/_layout.tsx`, so opening the app from a notification and tapping it in the
+      in-app inbox land in the same place.
+- [ ] Known gaps: no unregister-push-token-on-sign-out (a stale token just sits in `push_tokens`
+      until overwritten by the next login on that device — harmless, but not cleaned up); no retry
+      logic in `send-push` beyond what Expo's push API itself does.
+- [ ] Untested end-to-end — no pnpm/Expo runtime available in this sandbox (see Phase 1), and push
+      additionally requires a deployed Supabase project + EAS project + a physical device (the
+      simulator/emulator never gets a push token). Before shipping: run `eas init`, deploy the
+      Edge Function (`supabase functions deploy send-push`), wire the Database Webhook, then check
+      a device receives a push for each of: new message, viewing request status change, a saved
+      search match, and a price drop/listing status change on a favorited property.
 
 ---
 

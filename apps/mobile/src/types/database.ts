@@ -194,6 +194,32 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface PushToken {
+  profile_id: string;
+  expo_push_token: string;
+  device_info: string | null;
+  created_at: string;
+}
+
+/** The subset of SearchFilters the `notify_matching_saved_searches` DB trigger matches against. */
+export interface SavedSearchFilters {
+  search_text?: string | null;
+  min_rent?: number | null;
+  max_rent?: number | null;
+  bedrooms_filter?: number | null;
+  property_types?: PropertyType[] | null;
+  county_filter?: string | null;
+  town_filter?: string | null;
+}
+
+export interface SavedSearch {
+  id: string;
+  profile_id: string;
+  name: string;
+  filters: SavedSearchFilters;
+  created_at: string;
+}
+
 export interface Report {
   id: string;
   reporter_id: string;
@@ -357,6 +383,12 @@ export interface Database {
         Row: AppNotification;
         Insert: Partial<AppNotification>;
         Update: Partial<AppNotification>;
+      };
+      push_tokens: { Row: PushToken; Insert: Partial<PushToken>; Update: Partial<PushToken> };
+      saved_searches: {
+        Row: SavedSearch;
+        Insert: Partial<SavedSearch>;
+        Update: Partial<SavedSearch>;
       };
       reports: { Row: Report; Insert: Partial<Report>; Update: Partial<Report> };
       reviews: { Row: Review; Insert: Partial<Review>; Update: Partial<Review> };
