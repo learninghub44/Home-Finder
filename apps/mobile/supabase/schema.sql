@@ -1268,3 +1268,62 @@ $$;
 
 revoke all on function public.platform_analytics() from public;
 grant execute on function public.platform_analytics() to authenticated;
+
+-- ============================================================================
+-- Phase 8 — Payments Prep (architecture only — no live M-Pesa Daraja calls,
+-- no client-triggered payment flow. See ROADMAP.md Phase 8 note.)
+-- ============================================================================
+
+do $$ begin
+  create type payment_status as enum ('pending', 'completed', 'failed', 'cancelled');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type payment_purpose as enum ('rent', 'deposit', 'service_charge', 'viewing_fee');
+exception when duplicate_object then null; end $$;
+
+-- payment_accounts already existed as a Phase 8 stub (profile_id, provider,
+-- external_reference) — widened here with the fields a landlord's M-Pesa
+-- receiving account actually needs (Paybill xor Till, plus the account
+-- reference tenants would enter). Additive only, nothing renamed/removed.
+alter table public.payment_accounts add column if not exists paybill_number text;
+alter table public.payment_accounts add column if not exists till_number text;
+alter table public.payment_accounts add column if not exists account_reference text;
+
+-- payments — one row per rent/deposit/service-charge/viewing-fee payment
+-- attempt. Mirrors the fields a Daraja STK Push integration needs to track
+-- (merchant_request_id / checkout_request_id / mpesa_receipt_number), but
+-- nothing in this codebase calls Safaricom's API yet — this table exists so
+-- the schema is ready when that integration lands.
+create table if not exists public.payments (
+  id uuid primary key default gen_random_uuid(),
+  property_id uuid references public.properties(id) on delete set null,
+  tenant_id uuid not null references public.profiles(id) on delete cascade,
+  landlord_id uuid not null references public.landlords(profile_id) on delete cascade,
+  purpose payment_purpose not null default 'rent',
+  amount numeric(12, 2) not null check (amount > 0),
+  currency text not null default 'KES',
+  status payment_status not null default 'pending',
+  phone_number text,
+  mpesa_receipt_number text,
+  merchant_request_id text,
+  checkout_request_id text,
+  failure_reason text,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+create index if not exists idx_payments_tenant on public.payments(tenant_id);
+create index if not exists idx_payments_landlord on public.payments(landlord_id);
+create index if not exists idx_payments_property on public.payments(property_id);
+
+alter table public.payments enable row level security;
+
+-- Read-only from the client. Deliberately no insert/update/delete policy:
+-- initiating a payment means calling Daraja's STK Push endpoint (which needs
+-- a secret consumer key/secret this app must never hold client-side), and
+-- resolving it means trusting Safaricom's callback — both belong in a future
+-- SECURITY DEFINER function / Edge Function running with service-role
+-- credentials, not a client-writable table. Until that integration exists,
+-- this table has no way to be written to at all, by design.
+create policy "payments_select" on public.payments
+  for select using (tenant_id = auth.uid() or landlord_id = auth.uid() or public.is_admin());

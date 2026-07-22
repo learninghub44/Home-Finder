@@ -272,9 +272,25 @@ native clustering library; revisit if listing volume grows large enough to need 
 ---
 
 ## Phase 8 — Payments Prep (architecture only — do not implement flows)
-**Status: TODO**
+**Status: DONE (schema + types only, as scoped)**
 
-- [ ] Schema/table stubs for future M-Pesa Daraja integration (no live payment code)
+- [x] Schema stubs for future M-Pesa Daraja integration (`schema.sql`): widened the existing
+      `payment_accounts` stub with `paybill_number` / `till_number` / `account_reference`; added a
+      new `payments` table (purpose, amount, status, phone number, and the
+      `merchant_request_id` / `checkout_request_id` / `mpesa_receipt_number` fields a Daraja STK
+      Push integration needs) plus `payment_status` and `payment_purpose` enums
+- [x] `payments` RLS: select-only (tenant/landlord/admin). Deliberately **no insert/update/delete
+      policy** — initiating a payment requires calling Daraja with a secret consumer key/secret
+      that must never live client-side, and resolving one means trusting Safaricom's callback;
+      both belong in a future service-role Edge Function, not a client-writable table. The table
+      currently cannot be written to by any client, by design.
+- [x] TypeScript types (`types/database.ts`): `PaymentStatus`, `PaymentPurpose`, `Payment`,
+      `PaymentAccount` interfaces, registered in the `Database` type map
+- [x] No live payment code: no Daraja API calls, no Edge Function, no screen, no lib/hook wired to
+      either table — intentionally, per this phase's own "architecture only" scope. The next actual
+      payments phase would add a `supabase/functions/mpesa-stk-push` (or similar) Edge Function
+      holding the Daraja credentials, a callback handler Edge Function Safaricom calls to flip
+      `payments.status`, and only then a "Pay rent" screen.
 
 ---
 

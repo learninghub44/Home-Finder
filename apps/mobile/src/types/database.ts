@@ -18,6 +18,8 @@ export type ViewingStatus =
   | "cancelled"
   | "rescheduled";
 export type ReportStatus = "open" | "reviewing" | "resolved" | "dismissed";
+export type PaymentStatus = "pending" | "completed" | "failed" | "cancelled";
+export type PaymentPurpose = "rent" | "deposit" | "service_charge" | "viewing_fee";
 
 export interface Profile {
   id: string;
@@ -240,6 +242,40 @@ export interface Review {
   created_at: string;
 }
 
+/**
+ * Phase 8 architecture stub — no client write access (see schema.sql's
+ * `payments` RLS comment). Not yet wired to any screen or lib function.
+ */
+export interface PaymentAccount {
+  profile_id: string;
+  provider: string;
+  external_reference: string | null;
+  paybill_number: string | null;
+  till_number: string | null;
+  account_reference: string | null;
+  created_at: string;
+}
+
+/** Phase 8 architecture stub — mirrors the fields a Daraja STK Push integration
+ * would need. No client write access; not yet wired to any screen or lib function. */
+export interface Payment {
+  id: string;
+  property_id: string | null;
+  tenant_id: string;
+  landlord_id: string;
+  purpose: PaymentPurpose;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  phone_number: string | null;
+  mpesa_receipt_number: string | null;
+  merchant_request_id: string | null;
+  checkout_request_id: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 /** Lightweight card shape returned by the `search_properties` RPC. */
 export interface PropertyCard {
   id: string;
@@ -412,6 +448,12 @@ export interface Database {
       };
       reports: { Row: Report; Insert: Partial<Report>; Update: Partial<Report> };
       reviews: { Row: Review; Insert: Partial<Review>; Update: Partial<Review> };
+      payment_accounts: {
+        Row: PaymentAccount;
+        Insert: Partial<PaymentAccount>;
+        Update: Partial<PaymentAccount>;
+      };
+      payments: { Row: Payment; Insert: Partial<Payment>; Update: Partial<Payment> };
     };
     Functions: {
       search_properties: { Args: SearchFilters; Returns: PropertyCard[] };
